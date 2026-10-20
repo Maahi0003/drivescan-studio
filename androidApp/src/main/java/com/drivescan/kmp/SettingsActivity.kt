@@ -235,7 +235,7 @@ class SettingsActivity : Activity() {
         // ---- About ----------------------------------------------------------------
         content.addView(sectionTitle(tr(Str.SECTION_ABOUT), palette))
         val about = card(palette)
-        about.addView(bodyText(trf(Str.ABOUT_VERSION, "1.0.3"), palette, 15f))
+        about.addView(bodyText(trf(Str.ABOUT_VERSION, "1.0.4"), palette, 15f))
         about.addView(
             smallText(
                 tr(Str.ABOUT_TEXT),

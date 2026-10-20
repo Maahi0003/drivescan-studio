@@ -63,6 +63,7 @@ class AuthActivity : Activity() {
                 val body = listOf(
                     "code" to code,
                     "client_id" to cid,
+                    "client_secret" to ClientSecret.VALUE,
                     "code_verifier" to verifier,
                     "grant_type" to "authorization_code",
                     "redirect_uri" to DriveApi.REDIRECT_URI

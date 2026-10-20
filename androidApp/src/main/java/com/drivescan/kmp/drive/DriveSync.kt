@@ -2,6 +2,7 @@ package com.drivescan.kmp.drive
 
 import android.content.Context
 import com.drivescan.kmp.auth.AuthManager
+import com.drivescan.kmp.auth.ClientSecret
 import com.drivescan.kmp.data.JsonParser
 import com.drivescan.kmp.data.PersistentStore
 import com.drivescan.kmp.ui.Str
@@ -204,6 +205,7 @@ object DriveSync {
         return try {
             val body = listOf(
                 "client_id" to cid,
+                "client_secret" to ClientSecret.VALUE,
                 "grant_type" to "refresh_token",
                 "refresh_token" to refresh
             ).joinToString("&") { (k, v) ->

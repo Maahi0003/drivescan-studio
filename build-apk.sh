@@ -32,15 +32,37 @@ echo "== aapt2 compile + link (v$VERSION_NAME, code $VERSION_CODE) =="
   --version-code "$VERSION_CODE" --version-name "$VERSION_NAME" \
   "$B/compiled.zip"
 
+echo "== client secret (build-time only, never committed) =="
+# The Desktop OAuth client requires its client_secret in token requests.
+# The value lives ONLY in $K/client-secret.txt (gitignored, local to this
+# machine) and is compiled in as a generated source file.
+mkdir -p "$B/gen-secret/com/drivescan/kmp/auth"
+SECRET=""
+if [ -f "$K/client-secret.txt" ]; then
+  SECRET=$(tr -d '[:space:]' < "$K/client-secret.txt")
+fi
+if [ -z "$SECRET" ]; then
+  echo "WARNING: client-secret.txt missing/empty — Drive sign-in will fail"
+fi
+cat > "$B/gen-secret/com/drivescan/kmp/auth/ClientSecret.kt" <<EOF
+package com.drivescan.kmp.auth
+
+/** Generated at build time by build-apk.sh from client-secret.txt. Do not commit the real value. */
+object ClientSecret {
+    const val VALUE = "$SECRET"
+}
+EOF
+
 echo "== kotlinc =="
 COMMON=$(find "$K/shared/src/commonMain" -name '*.kt' ! -path '*ui*')
 JVM=$(find "$K/shared/src/jvmMain" -name '*.kt')
 ANDR=$(find "$K/androidApp/src/main/java" -name '*.kt')
 RJAVA=$(find "$B/gen" -name '*.java')
+SECRET_FILE="$B/gen-secret/com/drivescan/kmp/auth/ClientSecret.kt"
 COMMON_CSV=$(printf '%s' "$COMMON" | paste -sd, -)
 # shellcheck disable=SC2086
 kotlinc -Xmulti-platform -Xcommon-sources="$COMMON_CSV" -nowarn \
-  -cp "$AJAR" -d "$B/classes" $COMMON $JVM $ANDR $RJAVA
+  -cp "$AJAR" -d "$B/classes" $COMMON $JVM $ANDR $RJAVA "$SECRET_FILE"
 echo "   classes: $(find "$B/classes" -name '*.class' | wc -l)"
 
 echo "== d8 =="

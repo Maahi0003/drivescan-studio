@@ -3,3 +3,4 @@ build-manual/
 build/
 local.properties
 *.apk
+client-secret.txt

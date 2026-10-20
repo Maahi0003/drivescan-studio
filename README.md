@@ -66,4 +66,9 @@ numbers in `version.json` and attaches the APK to a GitHub Release whose tag
 matches `versionName` (the `apkUrl` field points at the release asset).
 
 Note: the Android signing keystore is intentionally NOT in this repo —
-builds are signed locally by `build-apk.sh`.
+builds are signed locally by `build-apk.sh`. Likewise, the Desktop OAuth
+client's `client_secret` (required by Google in token requests for this
+client type) is never committed: `build-apk.sh` reads it from a local,
+gitignored `client-secret.txt` and compiles it in as a generated source
+file. Without that file the build still succeeds but Drive sign-in will
+fail with "client_secret is missing".
