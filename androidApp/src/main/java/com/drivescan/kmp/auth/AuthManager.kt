@@ -13,10 +13,11 @@ import java.security.SecureRandom
  * Google OAuth 2.0 + PKCE for the native app.
  *
  * Flow: [startAuth] opens the system browser at Google's consent page;
- * Google redirects to com.drivescan.kmp:/oauth2redirect, which lands in
+ * Google redirects to the reversed client-ID scheme URI
+ * (com.googleusercontent.apps.<id>:/oauth2redirect), which lands in
  * AuthActivity; the code is exchanged for tokens there. Tokens live in
  * app-private SharedPreferences. A built-in default client ID
- * ([DEFAULT_CLIENT_ID] — the owner's Android OAuth client) ships with the
+ * ([DEFAULT_CLIENT_ID] — the owner's Desktop OAuth client) ships with the
  * app so Connect works out of the box; a user can still paste their own
  * (free) Google Cloud OAuth client ID in Settings to override it.
  */
@@ -24,9 +25,9 @@ object AuthManager {
     private const val DRIVE_PREFS = "drivescan_drive"
     private const val APP_PREFS = "drivescan_prefs"
 
-    /** Built-in Android OAuth client ID, used until the user saves their own in Settings. */
+    /** Built-in Desktop OAuth client ID, used until the user saves their own in Settings. */
     const val DEFAULT_CLIENT_ID =
-        "101242821085-v1n3n479cjl32t0isfqvqiv3oaj3ck4h.apps.googleusercontent.com"
+        "101242821085-s1fvavfto8jm2bfabnq4up98pn15dosk.apps.googleusercontent.com"
 
     /** Effective client ID: the user's saved value when present, else [DEFAULT_CLIENT_ID]. */
     fun clientId(context: Context): String {

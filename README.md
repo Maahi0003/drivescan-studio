@@ -20,7 +20,7 @@ backend, no embedded credentials.
 - `VaultActivity` — BiometricPrompt or PBKDF2 PIN; the 10 template slots
 - `BinActivity` — 30-day retention, restore / delete forever (Drive trash queued for next sync)
 - `SettingsActivity` — dark mode, Drive client ID + connect/disconnect/sync, storage, about
-- `auth/` — OAuth 2.0 + PKCE via browser redirect to `AuthActivity` (`com.drivescan.kmp:/oauth2redirect`)
+- `auth/` — OAuth 2.0 + PKCE via browser redirect to `AuthActivity` (reversed client-ID scheme of the Desktop OAuth client: `com.googleusercontent.apps.<id>:/oauth2redirect` — Google rejects package-name schemes for this flow)
 - `drive/DriveSync` — Drive REST over HttpURLConnection: workspace folders, multipart upload, move, pull-merge, trash queue
 - `data/PersistentStore` — files under `filesDir/scans/<docId>/` + hand-rolled JSON index (no libraries)
 - `ShareProvider` — dependency-free FileProvider replacement (serves only `filesDir/scans`)

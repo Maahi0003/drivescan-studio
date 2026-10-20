@@ -61,7 +61,7 @@
             android:exported="false"
             android:configChanges="orientation|screenSize|keyboardHidden" />
 
-        <!-- OAuth 2.0 + PKCE redirect target: com.drivescan.kmp:/oauth2redirect -->
+        <!-- OAuth 2.0 + PKCE redirect target: reversed client-ID scheme of the Desktop OAuth client -->
         <activity
             android:name=".auth.AuthActivity"
             android:exported="true"
@@ -72,7 +72,7 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data
-                    android:scheme="com.drivescan.kmp"
+                    android:scheme="com.googleusercontent.apps.101242821085-s1fvavfto8jm2bfabnq4up98pn15dosk"
                     android:path="/oauth2redirect" />
             </intent-filter>
         </activity>

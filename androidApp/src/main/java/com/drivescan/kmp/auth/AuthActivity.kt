@@ -17,7 +17,7 @@ import kotlin.concurrent.thread
 
 /**
  * Landing activity for the OAuth redirect
- * (com.drivescan.kmp:/oauth2redirect). Exchanges the authorization code
+ * (com.googleusercontent.apps.<id>:/oauth2redirect). Exchanges the authorization code
  * for tokens (with the stored PKCE verifier) on a background thread,
  * then finishes back to whatever screen launched the flow.
  */

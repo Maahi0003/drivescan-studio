@@ -123,7 +123,7 @@ class DriveApi(private val accessToken: () -> String?) {
         const val SCOPE_DRIVE_FILE = "https://www.googleapis.com/auth/drive.file"
         const val OAUTH_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
         const val OAUTH_TOKEN_URL = "https://oauth2.googleapis.com/token"
-        const val REDIRECT_URI = "com.drivescan.kmp:/oauth2redirect"
+        const val REDIRECT_URI = "com.googleusercontent.apps.101242821085-s1fvavfto8jm2bfabnq4up98pn15dosk:/oauth2redirect"
 
         /** Minimal JSON string escaping for values we place into request bodies. */
         fun escapeJson(value: String): String {
