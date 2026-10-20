@@ -1,6 +1,6 @@
 {
-  "versionCode": 5,
-  "versionName": "1.0.3",
-  "apkUrl": "https://github.com/Maahi0003/drivescan-studio/releases/download/v1.0.3/drivescan-studio.apk",
-  "notes": "Drive sign-in fixed (Desktop OAuth client + verified redirect). Update link is now built into the app."
+  "versionCode": 6,
+  "versionName": "1.0.4",
+  "apkUrl": "https://github.com/Maahi0003/drivescan-studio/releases/download/v1.0.4/drivescan-studio.apk",
+  "notes": "Token exchange fixed: app now sends the client_secret Google requires for Desktop clients."
 }
