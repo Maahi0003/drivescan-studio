@@ -106,7 +106,26 @@ enum class Str {
     AUTH_CONNECTING, AUTH_TOKEN_FAIL, AUTH_NO_TOKEN, AUTH_NETWORK_ERROR, AUTH_SUCCESS,
 
     // drive sync errors (DriveSync)
-    SYNC_ERR_NOT_CONNECTED, SYNC_ERR_FOLDER, SYNC_ERR_DOWNLOAD, SYNC_ERR_API
+    SYNC_ERR_NOT_CONNECTED, SYNC_ERR_FOLDER, SYNC_ERR_DOWNLOAD, SYNC_ERR_API,
+
+    // v1.1.0 — smart sync / dashboard
+    AUTO_SYNC_LABEL, AUTO_SYNC_NOTE, CHIP_PENDING_SYNC, CHIP_LAST_SYNCED,
+    FAB_SCAN, FAB_UPLOAD, COMBINE_BUTTON, COMBINE_DONE, TOAST_COMBINE_NONE,
+    TOAST_SELECT_DOCS, SELECTION_COUNT, DOC_ACTIONS_LABEL,
+
+    // v1.1.0 — scanner auto-capture + ID flow
+    PILL_DETECTED, BTN_AUTO_ON, BTN_AUTO_OFF,
+    ID_FRONT_PROMPT, ID_BACK_PROMPT, ID_BOTH_DONE, ID_NEED_BOTH,
+
+    // v1.1.0 — editor extras
+    BTN_MOVE_LEFT, BTN_MOVE_RIGHT, BTN_SIGN, SIGN_TITLE, SIGN_CLEAR, SIGN_DONE, SIGN_REMOVE,
+    TOAST_SIGN_EMPTY,
+
+    // v1.1.0 — viewer page management + secure share
+    BTN_MOVE_PAGE_LEFT, BTN_MOVE_PAGE_RIGHT, BTN_DELETE_PAGE_VIEWER,
+    TOAST_MIN_ONE_PAGE, TOAST_PAGE_DELETED,
+    BTN_SHARE_PASSWORD, SHARE_PW_TITLE, SHARE_PW_HINT, TOAST_PW_EMPTY,
+    TOAST_SECURE_PREPARING, TOAST_SECURE_NOT_AVAILABLE
 }
 
 object Lang {
@@ -406,7 +425,53 @@ private val EN_TABLE: Map<Str, String> = mapOf(
     Str.SYNC_ERR_NOT_CONNECTED to "Drive isn't connected — connect from Settings first",
     Str.SYNC_ERR_FOLDER to "Couldn't create Drive folder: %1\$s",
     Str.SYNC_ERR_DOWNLOAD to "Download failed (HTTP %1\$d)",
-    Str.SYNC_ERR_API to "Drive API error (HTTP %1\$d): %2\$s"
+    Str.SYNC_ERR_API to "Drive API error (HTTP %1\$d): %2\$s",
+
+    // v1.1.0 — smart sync / dashboard
+    Str.AUTO_SYNC_LABEL to "Auto sync",
+    Str.AUTO_SYNC_NOTE to "Syncs automatically when documents change or the network comes back. When off, sync only runs from “Sync now”.",
+    Str.CHIP_PENDING_SYNC to " • %1\$d pending sync",
+    Str.CHIP_LAST_SYNCED to "Last synced %1\$s",
+    Str.FAB_SCAN to "📷  Scan document",
+    Str.FAB_UPLOAD to "📁  Upload files",
+    Str.COMBINE_BUTTON to "🧩 Combine (%1\$d)",
+    Str.COMBINE_DONE to "Combined into one document",
+    Str.TOAST_COMBINE_NONE to "Nothing to combine — PDF-only documents can't be merged",
+    Str.TOAST_SELECT_DOCS to "Long-press documents to select, then Combine",
+    Str.SELECTION_COUNT to "%1\$d selected",
+    Str.DOC_ACTIONS_LABEL to "Actions",
+
+    // v1.1.0 — scanner
+    Str.PILL_DETECTED to "Document found — hold steady…",
+    Str.BTN_AUTO_ON to "🤖 Auto: On",
+    Str.BTN_AUTO_OFF to "🤖 Auto: Off",
+    Str.ID_FRONT_PROMPT to "Scan the FRONT side of the card",
+    Str.ID_BACK_PROMPT to "Now scan the BACK side of the card",
+    Str.ID_BOTH_DONE to "Both sides captured — tap Done",
+    Str.ID_NEED_BOTH to "ID cards need both sides — scan the other side",
+
+    // v1.1.0 — editor
+    Str.BTN_MOVE_LEFT to "◀ Move",
+    Str.BTN_MOVE_RIGHT to "Move ▶",
+    Str.BTN_SIGN to "✍ Sign",
+    Str.SIGN_TITLE to "Draw your signature",
+    Str.SIGN_CLEAR to "Clear",
+    Str.SIGN_DONE to "Done",
+    Str.SIGN_REMOVE to "Remove signature",
+    Str.TOAST_SIGN_EMPTY to "Draw a signature first",
+
+    // v1.1.0 — viewer
+    Str.BTN_MOVE_PAGE_LEFT to "◀ Move page",
+    Str.BTN_MOVE_PAGE_RIGHT to "Move page ▶",
+    Str.BTN_DELETE_PAGE_VIEWER to "🗑 Delete page",
+    Str.TOAST_MIN_ONE_PAGE to "A document needs at least one page",
+    Str.TOAST_PAGE_DELETED to "Page deleted",
+    Str.BTN_SHARE_PASSWORD to "🔒 Share with password",
+    Str.SHARE_PW_TITLE to "Password-protect PDF",
+    Str.SHARE_PW_HINT to "Enter a password",
+    Str.TOAST_PW_EMPTY to "Enter a password first",
+    Str.TOAST_SECURE_PREPARING to "Preparing protected PDF…",
+    Str.TOAST_SECURE_NOT_AVAILABLE to "Password protection needs a scanned (image) document"
 )
 
 private val HI_TABLE: Map<Str, String> = mapOf(
@@ -640,7 +705,53 @@ private val HI_TABLE: Map<Str, String> = mapOf(
     Str.SYNC_ERR_NOT_CONNECTED to "Drive connect नहीं है — Settings से पहले Connect करें",
     Str.SYNC_ERR_FOLDER to "Drive फ़ोल्डर नहीं बन पाया: %1\$s",
     Str.SYNC_ERR_DOWNLOAD to "download विफल (HTTP %1\$d)",
-    Str.SYNC_ERR_API to "Drive API त्रुटि (HTTP %1\$d): %2\$s"
+    Str.SYNC_ERR_API to "Drive API त्रुटि (HTTP %1\$d): %2\$s",
+
+    // v1.1.0 — smart sync / dashboard
+    Str.AUTO_SYNC_LABEL to "ऑटो सिंक",
+    Str.AUTO_SYNC_NOTE to "दस्तावेज़ बदलते ही या नेटवर्क लौटते ही अपने आप सिंक होता है। बंद होने पर सिंक केवल “अभी सिंक करें” से चलेगा।",
+    Str.CHIP_PENDING_SYNC to " • %1\$d सिंक बाकी",
+    Str.CHIP_LAST_SYNCED to "अंतिम सिंक %1\$s",
+    Str.FAB_SCAN to "📷  दस्तावेज़ स्कैन करें",
+    Str.FAB_UPLOAD to "📁  फ़ाइलें अपलोड करें",
+    Str.COMBINE_BUTTON to "🧩 मिलाएं (%1\$d)",
+    Str.COMBINE_DONE to "एक दस्तावेज़ में मिला दिया गया",
+    Str.TOAST_COMBINE_NONE to "मिलाने के लिए कुछ नहीं — केवल-PDF दस्तावेज़ नहीं मिलाए जा सकते",
+    Str.TOAST_SELECT_DOCS to "दस्तावेज़ों को लंबे समय तक दबाकर चुनें, फिर मिलाएं",
+    Str.SELECTION_COUNT to "%1\$d चुने गए",
+    Str.DOC_ACTIONS_LABEL to "एक्शन",
+
+    // v1.1.0 — scanner
+    Str.PILL_DETECTED to "दस्तावेज़ मिल गया — स्थिर रखें…",
+    Str.BTN_AUTO_ON to "🤖 ऑटो: चालू",
+    Str.BTN_AUTO_OFF to "🤖 ऑटो: बंद",
+    Str.ID_FRONT_PROMPT to "कार्ड का अगला (FRONT) हिस्सा स्कैन करें",
+    Str.ID_BACK_PROMPT to "अब कार्ड का पिछला (BACK) हिस्सा स्कैन करें",
+    Str.ID_BOTH_DONE to "दोनों हिस्से कैप्चर हो गए — Done दबाएं",
+    Str.ID_NEED_BOTH to "ID कार्ड के दोनों हिस्से चाहिए — दूसरा हिस्सा स्कैन करें",
+
+    // v1.1.0 — editor
+    Str.BTN_MOVE_LEFT to "◀ हटाएं",
+    Str.BTN_MOVE_RIGHT to "हटाएं ▶",
+    Str.BTN_SIGN to "✍ हस्ताक्षर",
+    Str.SIGN_TITLE to "अपने हस्ताक्षर बनाएं",
+    Str.SIGN_CLEAR to "साफ़ करें",
+    Str.SIGN_DONE to "हो गया",
+    Str.SIGN_REMOVE to "हस्ताक्षर हटाएं",
+    Str.TOAST_SIGN_EMPTY to "पहले हस्ताक्षर बनाएं",
+
+    // v1.1.0 — viewer
+    Str.BTN_MOVE_PAGE_LEFT to "◀ पेज हटाएं",
+    Str.BTN_MOVE_PAGE_RIGHT to "पेज हटाएं ▶",
+    Str.BTN_DELETE_PAGE_VIEWER to "🗑 पेज हटाएं",
+    Str.TOAST_MIN_ONE_PAGE to "दस्तावेज़ में कम से कम एक पेज होना चाहिए",
+    Str.TOAST_PAGE_DELETED to "पेज हटा दिया गया",
+    Str.BTN_SHARE_PASSWORD to "🔒 पासवर्ड के साथ शेयर करें",
+    Str.SHARE_PW_TITLE to "PDF को पासवर्ड से सुरक्षित करें",
+    Str.SHARE_PW_HINT to "पासवर्ड डालें",
+    Str.TOAST_PW_EMPTY to "पहले पासवर्ड डालें",
+    Str.TOAST_SECURE_PREPARING to "सुरक्षित PDF तैयार हो रहा है…",
+    Str.TOAST_SECURE_NOT_AVAILABLE to "पासवर्ड सुरक्षा के लिए स्कैन किया गया (इमेज) दस्तावेज़ चाहिए"
 )
 
 private val HINGLISH_TABLE: Map<Str, String> = mapOf(
@@ -874,5 +985,51 @@ private val HINGLISH_TABLE: Map<Str, String> = mapOf(
     Str.SYNC_ERR_NOT_CONNECTED to "Drive connect nahi hai — Settings se pehle Connect karein",
     Str.SYNC_ERR_FOLDER to "Drive folder nahi ban paya: %1\$s",
     Str.SYNC_ERR_DOWNLOAD to "Download fail (HTTP %1\$d)",
-    Str.SYNC_ERR_API to "Drive API error (HTTP %1\$d): %2\$s"
+    Str.SYNC_ERR_API to "Drive API error (HTTP %1\$d): %2\$s",
+
+    // v1.1.0 — smart sync / dashboard
+    Str.AUTO_SYNC_LABEL to "Auto sync",
+    Str.AUTO_SYNC_NOTE to "Document badalte hi ya network wapas aate hi apne aap sync ho jata hai. Band hone par sync sirf “Sync now” se chalega.",
+    Str.CHIP_PENDING_SYNC to " • %1\$d sync baki",
+    Str.CHIP_LAST_SYNCED to "Last sync %1\$s",
+    Str.FAB_SCAN to "📷  Document scan karein",
+    Str.FAB_UPLOAD to "📁  Files upload karein",
+    Str.COMBINE_BUTTON to "🧩 Combine (%1\$d)",
+    Str.COMBINE_DONE to "Ek document mein combine ho gaya",
+    Str.TOAST_COMBINE_NONE to "Combine karne ko kuch nahi — sirf-PDF documents merge nahi ho sakte",
+    Str.TOAST_SELECT_DOCS to "Documents ko long-press karke select karein, phir Combine karein",
+    Str.SELECTION_COUNT to "%1\$d selected",
+    Str.DOC_ACTIONS_LABEL to "Actions",
+
+    // v1.1.0 — scanner
+    Str.PILL_DETECTED to "Document mil gaya — steady rakhein…",
+    Str.BTN_AUTO_ON to "🤖 Auto: On",
+    Str.BTN_AUTO_OFF to "🤖 Auto: Off",
+    Str.ID_FRONT_PROMPT to "Card ka FRONT side scan karein",
+    Str.ID_BACK_PROMPT to "Ab card ka BACK side scan karein",
+    Str.ID_BOTH_DONE to "Dono sides capture ho gaye — Done dabayein",
+    Str.ID_NEED_BOTH to "ID card ke dono sides chahiye — dusra side scan karein",
+
+    // v1.1.0 — editor
+    Str.BTN_MOVE_LEFT to "◀ Move",
+    Str.BTN_MOVE_RIGHT to "Move ▶",
+    Str.BTN_SIGN to "✍ Sign",
+    Str.SIGN_TITLE to "Apna signature banao",
+    Str.SIGN_CLEAR to "Clear",
+    Str.SIGN_DONE to "Done",
+    Str.SIGN_REMOVE to "Signature hatayein",
+    Str.TOAST_SIGN_EMPTY to "Pehle signature banao",
+
+    // v1.1.0 — viewer
+    Str.BTN_MOVE_PAGE_LEFT to "◀ Page move",
+    Str.BTN_MOVE_PAGE_RIGHT to "Page move ▶",
+    Str.BTN_DELETE_PAGE_VIEWER to "🗑 Page delete",
+    Str.TOAST_MIN_ONE_PAGE to "Document mein kam se kam ek page hona chahiye",
+    Str.TOAST_PAGE_DELETED to "Page delete ho gaya",
+    Str.BTN_SHARE_PASSWORD to "🔒 Password ke saath share",
+    Str.SHARE_PW_TITLE to "PDF ko password se protect karein",
+    Str.SHARE_PW_HINT to "Password dalo",
+    Str.TOAST_PW_EMPTY to "Pehle password dalo",
+    Str.TOAST_SECURE_PREPARING to "Protected PDF ban raha hai…",
+    Str.TOAST_SECURE_NOT_AVAILABLE to "Password protection ke liye scanned (image) document chahiye"
 )

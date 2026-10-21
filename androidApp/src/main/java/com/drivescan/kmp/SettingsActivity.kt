@@ -18,6 +18,7 @@ import com.drivescan.kmp.data.PersistentStore
 import com.drivescan.kmp.data.long
 import com.drivescan.kmp.data.str
 import com.drivescan.kmp.drive.DriveSync
+import com.drivescan.kmp.drive.SyncManager
 import com.drivescan.kmp.ui.AppLang
 import com.drivescan.kmp.ui.Lang
 import com.drivescan.kmp.ui.Str
@@ -137,6 +138,26 @@ class SettingsActivity : Activity() {
         }
         driveCard.addView(saveClientBtn)
 
+        // Smart sync (v1.1.0): auto sync on local change / network return / app start.
+        val autoSyncRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(0, dp(10), 0, 0)
+        }
+        autoSyncRow.addView(bodyText(tr(Str.AUTO_SYNC_LABEL), palette, 15f).apply {
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        })
+        val autoSyncSwitch = Switch(this).apply {
+            isChecked = SyncManager.autoSyncEnabled(this@SettingsActivity)
+            setOnCheckedChangeListener { _, checked ->
+                SyncManager.setAutoSync(this@SettingsActivity, checked)
+            }
+        }
+        autoSyncRow.addView(autoSyncSwitch)
+        driveCard.addView(autoSyncRow)
+        driveCard.addView(
+            smallText(tr(Str.AUTO_SYNC_NOTE), palette).apply { setPadding(0, dp(2), 0, dp(6)) }
+        )
+
         if (!connected) {
             val connectBtn = primaryButton("Connect Google Drive").apply {
                 setOnClickListener {
@@ -235,7 +256,7 @@ class SettingsActivity : Activity() {
         // ---- About ----------------------------------------------------------------
         content.addView(sectionTitle(tr(Str.SECTION_ABOUT), palette))
         val about = card(palette)
-        about.addView(bodyText(trf(Str.ABOUT_VERSION, "1.0.4"), palette, 15f))
+        about.addView(bodyText(trf(Str.ABOUT_VERSION, "1.1.0"), palette, 15f))
         about.addView(
             smallText(
                 tr(Str.ABOUT_TEXT),

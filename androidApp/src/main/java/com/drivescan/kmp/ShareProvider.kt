@@ -32,6 +32,10 @@ class ShareProvider : ContentProvider() {
             base = File(ctx.cacheDir, "updates").canonicalFile
             file = File(base, segments[1]).canonicalFile
             if (!file.path.startsWith(base.path)) throw FileNotFoundException("Outside updates dir")
+        } else if (segments[0] == SECURED_SEGMENT) {
+            base = File(ctx.cacheDir, "secured").canonicalFile
+            file = File(base, segments[1]).canonicalFile
+            if (!file.path.startsWith(base.path)) throw FileNotFoundException("Outside secured dir")
         } else {
             base = File(ctx.filesDir, "scans").canonicalFile
             file = File(base, "${segments[0]}/${segments[1]}").canonicalFile
@@ -80,6 +84,9 @@ class ShareProvider : ContentProvider() {
         /** Reserved first path segment for files in the updates cache dir. */
         const val UPDATES_SEGMENT = "updates"
 
+        /** Reserved first path segment for password-protected PDFs in cacheDir/secured. */
+        const val SECURED_SEGMENT = "secured"
+
         fun uriFor(docId: String, fileName: String): Uri =
             Uri.Builder().scheme("content").authority(AUTHORITY)
                 .appendPath(docId).appendPath(fileName).build()
@@ -88,5 +95,10 @@ class ShareProvider : ContentProvider() {
         fun updateUri(fileName: String): Uri =
             Uri.Builder().scheme("content").authority(AUTHORITY)
                 .appendPath(UPDATES_SEGMENT).appendPath(fileName).build()
+
+        /** URI for a password-protected PDF export in cacheDir/secured. */
+        fun securedUri(fileName: String): Uri =
+            Uri.Builder().scheme("content").authority(AUTHORITY)
+                .appendPath(SECURED_SEGMENT).appendPath(fileName).build()
     }
 }

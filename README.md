@@ -1,4 +1,42 @@
-# DriveScan Studio — Kotlin Multiplatform (full native app, v1.0.0)
+# DriveScan Studio — Kotlin Multiplatform (full native app, v1.1.0)
+
+## v1.1.0
+
+Smart auto-sync (toggle in Settings; syncs on local change, network return and
+app start), dashboard "+" FAB (scan / upload images & PDFs), long-press
+multi-select with "Combine into one PDF", page reorder/delete in the viewer,
+themed scanner (follows the app light/dark palette), ID-card scan mode
+(front + back composed onto one A4 page), auto edge detection + auto-capture
+(pure-Kotlin `scan/DocDetector`, detected corners seed the editor), a
+signature stamp tool in the editor, password-protected PDF sharing
+(`scan/PdfEncrypt` — PDF Standard Security Handler, RC4-128, implemented
+in-repo and verified against pikepdf), and on-device OCR (below).
+
+### On-device OCR — vendored ML Kit
+
+ML Kit Text Recognition v2 with **bundled** models (Latin + Devanagari,
+fully offline) is integrated without Gradle: the AARs were resolved from
+Google Maven (`com.google.mlkit:text-recognition:16.0.1`,
+`text-recognition-devanagari:16.0.1` and their POM dependency closure —
+mlkit common/vision-common, play-services base/basement/tasks,
+firebase-components/encoders, datatransport, odml-image, androidx
+annotation/collection/core/appcompat/exifinterface/lifecycle-common,
+javax.inject, kotlinx-coroutines) and vendored under `mlkit-libs/`:
+
+- `mlkit-libs/jars/` — each AAR's `classes.jar`, on the kotlinc classpath
+  and in the d8 inputs (`build-apk.sh`)
+- `mlkit-libs/lib/{arm64-v8a,armeabi-v7a}/` — `libmlkit_google_ocr_pipeline.so`
+  (x86/x86_64 emulator ABIs intentionally not packaged, to keep the APK lean)
+- `mlkit-libs/assets/mlkit-google-ocr-models/` — the TFLite OCR models
+
+The ML Kit/GMS manifest components (MlKitInitProvider,
+MlKitComponentDiscoveryService with all registrars, GoogleApiActivity,
+datatransport services, `com.google.android.gms.version` meta-data) are
+merged by hand into `androidApp/src/main/AndroidManifest.xml` +
+`res/values/google_play_services.xml`, matching what the manifest merger
+would produce. Recognized text is stored per document (`ocrText` in the
+index) and searched from the dashboard; exported PDFs get an invisible
+text layer at the recognized block positions.
 
 Native Android app + shared codebase for desktop. Local-first: every scan
 lives on the phone first; Google Drive is a sync layer on top. No paid

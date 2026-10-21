@@ -10,6 +10,16 @@ import com.drivescan.shared.ScanDocument
 import java.io.File
 import java.io.FileOutputStream
 
+/** One OCR text block with its bounding box in page-bitmap pixel coordinates. */
+data class OcrTextBlock(
+    val text: String,
+    val left: Int,
+    val top: Int,
+    val right: Int,
+    val bottom: Int,
+    val lines: List<String> = emptyList()
+)
+
 /**
  * Local-first persistent store.
  *
@@ -122,6 +132,85 @@ class PersistentStore private constructor(context: Context) {
         docList.add(doc)
         save()
         return doc
+    }
+
+    /** Imports a standalone PDF file as a new document (Dashboard upload). */
+    @Synchronized
+    fun importPdfDocument(
+        name: String,
+        folderId: String?,
+        sourcePdf: File,
+        vaultTemplateId: String?,
+        nowMs: Long
+    ): ScanDocument {
+        val id = newId("doc")
+        val dir = docDir(id)
+        val dest = File(dir, "doc.pdf")
+        sourcePdf.copyTo(dest, overwrite = true)
+        val doc = ScanDocument(
+            id = id,
+            name = name,
+            folderId = folderId,
+            pageCount = 1,
+            createdAtEpochMs = nowMs,
+            modifiedAtEpochMs = nowMs,
+            inVault = vaultTemplateId != null,
+            vaultTemplateId = vaultTemplateId,
+            pageFiles = emptyList(),
+            pdfFile = dest.name
+        )
+        docList.add(doc)
+        save()
+        return doc
+    }
+
+    /** Stores OCR text for a document (capped; searched from the Dashboard). */
+    @Synchronized
+    fun setOcrText(docId: String, text: String) {
+        val idx = docList.indexOfFirst { it.id == docId }
+        if (idx >= 0) {
+            docList[idx] = docList[idx].copy(ocrText = text.take(OCR_TEXT_CAP))
+            save()
+        }
+    }
+
+    /** Marks an externally rendered PDF file as the document's PDF. */
+    @Synchronized
+    fun attachPdf(docId: String, pdf: File) {
+        val doc = documentById(docId) ?: return
+        val dest = File(docDir(docId), "doc.pdf")
+        if (pdf.absolutePath != dest.absolutePath) pdf.copyTo(dest, overwrite = true)
+        replace(doc.copy(pdfFile = dest.name))
+        save()
+    }
+
+    /**
+     * Replaces a document's page list (viewer reorder / single-page delete):
+     * updates pageFiles + pageCount, removes page image files that are no
+     * longer referenced, and regenerates the PDF from the new order.
+     * Callers rename/keep files so the names in [orderedNames] still exist.
+     */
+    @Synchronized
+    fun replacePages(docId: String, orderedNames: List<String>) {
+        val doc = documentById(docId) ?: return
+        if (orderedNames.isEmpty()) return
+        val dir = docDir(docId)
+        val removed = doc.pageFiles.filter { it !in orderedNames }
+        removed.forEach { File(dir, it).delete() }
+        var pdfName = doc.pdfFile
+        if (pdfName != null) {
+            val out = File(dir, pdfName)
+            pdfName = if (renderPdf(orderedNames.map { File(dir, it) }, out)) pdfName else null
+        }
+        replace(
+            doc.copy(
+                pageFiles = orderedNames,
+                pageCount = orderedNames.size,
+                pdfFile = pdfName,
+                modifiedAtEpochMs = System.currentTimeMillis()
+            )
+        )
+        save()
     }
 
     /** Creates a metadata-only document for a file pulled from Drive. */
@@ -261,7 +350,8 @@ class PersistentStore private constructor(context: Context) {
                         vaultTemplateId = m.str("vaultTemplateId"),
                         driveId = m.str("driveId"),
                         pageFiles = m.strList("pageFiles"),
-                        pdfFile = m.str("pdfFile")
+                        pdfFile = m.str("pdfFile"),
+                        ocrText = m.str("ocrText") ?: ""
                     )
                 )
             }
@@ -301,6 +391,9 @@ class PersistentStore private constructor(context: Context) {
             }
             sb.append(']')
             d.pdfFile?.let { sb.append(",\"pdfFile\":\"${esc(it)}\"") }
+            if (d.ocrText.isNotEmpty()) {
+                sb.append(",\"ocrText\":\"${esc(d.ocrText.take(OCR_TEXT_CAP))}\"")
+            }
             sb.append('}')
         }
         sb.append("]}")
@@ -330,6 +423,9 @@ class PersistentStore private constructor(context: Context) {
     }
 
     companion object {
+        /** Upper bound for stored OCR text per document (index stays lean). */
+        const val OCR_TEXT_CAP = 20_000
+
         @Volatile
         private var instance: PersistentStore? = null
 
@@ -347,6 +443,51 @@ class PersistentStore private constructor(context: Context) {
                     val pageInfo = PdfDocument.PageInfo.Builder(bmp.width, bmp.height, idx + 1).create()
                     val page = pdf.startPage(pageInfo)
                     page.canvas.drawBitmap(bmp, 0f, 0f, null)
+                    pdf.finishPage(page)
+                    bmp.recycle()
+                }
+                FileOutputStream(out).use { pdf.writeTo(it) }
+                true
+            } catch (e: Exception) {
+                false
+            } finally {
+                pdf.close()
+            }
+        }
+
+        /**
+         * Like [renderPdf], but also draws each page's OCR text invisibly
+         * (fully transparent paint) at the recognized block positions, so the
+         * exported PDF carries a searchable text layer aligned with the image.
+         * Coordinates in [blocksPerPage] are in page-bitmap pixels, matching
+         * the PDF page size (one point per pixel, as in [renderPdf]).
+         */
+        fun renderPdfWithText(pages: List<File>, blocksPerPage: List<List<OcrTextBlock>>, out: File): Boolean {
+            val pdf = PdfDocument()
+            return try {
+                pages.forEachIndexed { idx, pageFile ->
+                    val bmp = BitmapFactory.decodeFile(pageFile.absolutePath) ?: return@forEachIndexed
+                    val pageInfo = PdfDocument.PageInfo.Builder(bmp.width, bmp.height, idx + 1).create()
+                    val page = pdf.startPage(pageInfo)
+                    val canvas = page.canvas
+                    canvas.drawBitmap(bmp, 0f, 0f, null)
+                    val paint = android.graphics.Paint().apply {
+                        color = android.graphics.Color.TRANSPARENT
+                        isAntiAlias = false
+                    }
+                    for (block in blocksPerPage.getOrNull(idx).orEmpty()) {
+                        val lines = block.lines.ifEmpty { listOf(block.text) }
+                        val boxH = (block.bottom - block.top).coerceAtLeast(1)
+                        val lineH = boxH.toFloat() / lines.size
+                        paint.textSize = lineH * 0.9f
+                        lines.forEachIndexed { li, lineText ->
+                            if (lineText.isNotBlank()) {
+                                // PdfDocument text origin is the baseline.
+                                val baseline = block.top + lineH * (li + 1) - lineH * 0.15f
+                                canvas.drawText(lineText, block.left.toFloat(), baseline, paint)
+                            }
+                        }
+                    }
                     pdf.finishPage(page)
                     bmp.recycle()
                 }

@@ -26,9 +26,9 @@ import android.widget.RadioGroup
 import android.widget.Spinner
 import android.widget.TextView
 import android.widget.Toast
-import com.drivescan.kmp.auth.AuthManager
 import com.drivescan.kmp.data.PersistentStore
-import com.drivescan.kmp.drive.DriveSync
+import com.drivescan.kmp.drive.SyncManager
+import com.drivescan.kmp.ocr.OcrHelper
 import com.drivescan.kmp.scan.ImageOps
 import com.drivescan.kmp.scan.PageFilter
 import com.drivescan.kmp.ui.Lang
@@ -54,10 +54,14 @@ object EditorSession {
     val corners = HashMap<String, FloatArray>()
     val filters = HashMap<String, PageFilter>()
     val rotations = HashMap<String, Int>()
+
+    /** Signature stamps per page path (transparent-background bitmaps). */
+    val signatures = HashMap<String, Bitmap>()
     fun clear() {
         corners.clear()
         filters.clear()
         rotations.clear()
+        signatures.clear()
     }
 }
 
@@ -77,6 +81,9 @@ class EditorActivity : Activity() {
     private var initialTemplateId: String? = null
     private var initialFolderId: String? = null
 
+    /** ID-card flow: compose the first two pages (front/back) onto one A4 page. */
+    private var idCompose = false
+
     private lateinit var pageImage: ImageView
     private lateinit var cornerView: CornerView
     private lateinit var pageLabel: TextView
@@ -90,6 +97,15 @@ class EditorActivity : Activity() {
         sessionDir = intent.getStringExtra("sessionDir")?.let { File(it) }
         initialTemplateId = intent.getStringExtra("vaultTemplateId")
         initialFolderId = intent.getStringExtra("folderId")
+        idCompose = intent.getBooleanExtra("idCompose", false)
+        // Seed per-page corners from the scanner's auto-detection (if any).
+        intent.getStringArrayListExtra("pageCorners")?.forEachIndexed { idx, encoded ->
+            val path = pagePaths.getOrNull(idx) ?: return@forEachIndexed
+            if (encoded.isNotBlank() && !EditorSession.corners.containsKey(path)) {
+                val nums = encoded.split(",").mapNotNull { it.toFloatOrNull() }
+                if (nums.size == 8) EditorSession.corners[path] = nums.toFloatArray()
+            }
+        }
         if (pagePaths.isEmpty()) {
             toast(tr(Str.TOAST_NO_PAGE_FOUND))
             finish()
@@ -165,6 +181,16 @@ class EditorActivity : Activity() {
         actions.addView(darkChip(tr(Str.BTN_DELETE_PAGE)) { deleteCurrentPage() })
         root.addView(actions)
 
+        val manageRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            setPadding(dp(10), dp(2), dp(10), dp(4))
+        }
+        manageRow.addView(darkChip(tr(Str.BTN_MOVE_LEFT)) { moveCurrentPage(-1) })
+        manageRow.addView(darkChip(tr(Str.BTN_MOVE_RIGHT)) { moveCurrentPage(1) })
+        manageRow.addView(darkChip(tr(Str.BTN_SIGN)) { showSignDialog() })
+        root.addView(manageRow)
+
         strip = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             setPadding(dp(10), dp(6), dp(10), dp(6))
@@ -215,7 +241,8 @@ class EditorActivity : Activity() {
             return
         }
         val rotated = ImageOps.rotate(raw, EditorSession.rotations[path] ?: 0)
-        val filtered = ImageOps.applyFilter(rotated, EditorSession.filters[path] ?: PageFilter.ORIGINAL)
+        var filtered = ImageOps.applyFilter(rotated, EditorSession.filters[path] ?: PageFilter.ORIGINAL)
+        EditorSession.signatures[path]?.let { sig -> filtered = stampSignature(filtered, sig) }
         previewBitmap = filtered
         pageImage.setImageBitmap(filtered)
         cornerView.bind(filtered, cornersFor(path))
@@ -244,6 +271,13 @@ class EditorActivity : Activity() {
         val intent = Intent(this, ScannerActivity::class.java).apply {
             sessionDir?.let { putExtra("sessionDir", it.absolutePath) }
             putStringArrayListExtra("existingPages", ArrayList(pagePaths))
+            putStringArrayListExtra(
+                "existingCorners",
+                ArrayList(pagePaths.map { p ->
+                    EditorSession.corners[p]?.joinToString(",") { v -> v.toString() } ?: ""
+                })
+            )
+            putExtra("idCardMode", idCompose)
             initialTemplateId?.let { putExtra("vaultTemplateId", it) }
             initialFolderId?.let { putExtra("folderId", it) }
         }
@@ -256,6 +290,7 @@ class EditorActivity : Activity() {
         EditorSession.corners.remove(path)
         EditorSession.filters.remove(path)
         EditorSession.rotations.remove(path)
+        EditorSession.signatures.remove(path)
         pagePaths.removeAt(current)
         if (pagePaths.isEmpty()) {
             toast(tr(Str.TOAST_ALL_PAGES_DELETED))
@@ -263,6 +298,151 @@ class EditorActivity : Activity() {
             return
         }
         showPage(minOf(current, pagePaths.size - 1))
+    }
+
+    /** Reorders the current page within this session (session state is path-keyed). */
+    private fun moveCurrentPage(delta: Int) {
+        val target = current + delta
+        if (target !in pagePaths.indices) return
+        val tmp = pagePaths[current]
+        pagePaths[current] = pagePaths[target]
+        pagePaths[target] = tmp
+        showPage(target)
+    }
+
+    // ---- signature stamp ------------------------------------------------------
+
+    /** Draws [sig] at the page's bottom-right (30% of page width, 3% margin). */
+    private fun stampSignature(page: Bitmap, sig: Bitmap): Bitmap {
+        if (sig.width <= 0 || sig.height <= 0) return page
+        val out = page.copy(Bitmap.Config.ARGB_8888, true)
+        val canvas = Canvas(out)
+        val targetW = page.width * 0.30f
+        val targetH = sig.height * (targetW / sig.width)
+        val margin = page.width * 0.03f
+        val left = page.width - margin - targetW
+        val top = page.height - margin - targetH
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+        canvas.drawBitmap(sig, null, RectF(left, top, left + targetW, top + targetH), paint)
+        return out
+    }
+
+    private fun showSignDialog() {
+        val path = currentPath()
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(10), dp(20), dp(4))
+        }
+        if (EditorSession.signatures.containsKey(path)) {
+            container.addView(TextView(this).apply {
+                text = tr(Str.SIGN_REMOVE)
+                textSize = 14f
+                setTextColor(palette.danger)
+                setPadding(0, dp(2), 0, dp(10))
+                setOnClickListener {
+                    EditorSession.signatures.remove(path)
+                    showPage(current)
+                }
+            })
+        }
+        val pad = SignatureView(this).apply {
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(280)
+            )
+            background = rounded(Color.WHITE, 12, palette.cardBorder)
+        }
+        container.addView(pad)
+        AlertDialog.Builder(this)
+            .setTitle(tr(Str.SIGN_TITLE))
+            .setView(container)
+            .setPositiveButton(tr(Str.SIGN_DONE)) { _, _ ->
+                val sig = pad.renderSignature()
+                if (sig != null) {
+                    EditorSession.signatures[path] = sig
+                    showPage(current)
+                } else if (pad.hasInk) {
+                    toast(tr(Str.TOAST_SIGN_EMPTY))
+                }
+            }
+            .setNegativeButton(tr(Str.BTN_CANCEL), null)
+            .setNeutralButton(tr(Str.SIGN_CLEAR), null)
+            .create()
+            .also { dialog ->
+                dialog.show()
+                // Keep the dialog open on Clear so the user can redraw.
+                dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener { pad.clearPad() }
+            }
+    }
+
+    /** Finger-drawing pad on a transparent background. */
+    inner class SignatureView(context: Context) : View(context) {
+        private val paths = mutableListOf<android.graphics.Path>()
+        private var currentPath: android.graphics.Path? = null
+        var hasInk = false
+            private set
+        private val inkPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.rgb(26, 26, 120)
+            style = Paint.Style.STROKE
+            strokeWidth = 6f
+            strokeCap = Paint.Cap.ROUND
+            strokeJoin = Paint.Join.ROUND
+        }
+
+        override fun onDraw(canvas: Canvas) {
+            super.onDraw(canvas)
+            for (p in paths) canvas.drawPath(p, inkPaint)
+            currentPath?.let { canvas.drawPath(it, inkPaint) }
+        }
+
+        override fun onTouchEvent(event: MotionEvent): Boolean {
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    currentPath = android.graphics.Path().apply { moveTo(event.x, event.y) }
+                    hasInk = true
+                    invalidate()
+                    return true
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    currentPath?.lineTo(event.x, event.y)
+                    invalidate()
+                    return true
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    currentPath?.let { paths.add(it) }
+                    currentPath = null
+                    invalidate()
+                    return true
+                }
+            }
+            return super.onTouchEvent(event)
+        }
+
+        fun clearPad() {
+            paths.clear()
+            currentPath = null
+            hasInk = false
+            invalidate()
+        }
+
+        /** Renders the ink, tightly cropped, on a transparent bitmap. */
+        fun renderSignature(): Bitmap? {
+            if (!hasInk || paths.isEmpty()) return null
+            val bounds = RectF()
+            for (p in paths) {
+                val b = RectF()
+                p.computeBounds(b, true)
+                bounds.union(b)
+            }
+            if (bounds.width() <= 0f || bounds.height() <= 0f) return null
+            val padPx = 14f
+            val w = (bounds.width() + padPx * 2).toInt().coerceAtLeast(1)
+            val h = (bounds.height() + padPx * 2).toInt().coerceAtLeast(1)
+            val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+            val canvas = Canvas(bmp)
+            canvas.translate(-bounds.left + padPx, -bounds.top + padPx)
+            for (p in paths) canvas.drawPath(p, inkPaint)
+            return bmp
+        }
     }
 
     // ---- save -----------------------------------------------------------------
@@ -348,19 +528,31 @@ class EditorActivity : Activity() {
                         ?: throw IllegalStateException(trf(Str.ERR_PAGE_LOAD, idx + 1))
                     val rotated = ImageOps.rotate(raw, EditorSession.rotations[path] ?: 0)
                     val warped = ImageOps.warp(rotated, cornersFor(path))
-                    val filtered = ImageOps.applyFilter(
+                    var filtered = ImageOps.applyFilter(
                         warped, EditorSession.filters[path] ?: PageFilter.ORIGINAL
                     )
+                    // Burn the signature stamp into the page before save/export.
+                    EditorSession.signatures[path]?.let { sig ->
+                        filtered = stampSignature(filtered, sig)
+                    }
                     val out = File(processedDir, "final_page${idx + 1}.jpg")
                     if (!ImageOps.saveJpeg(filtered, out)) {
                         throw IllegalStateException(trf(Str.ERR_PAGE_SAVE, idx + 1))
                     }
                     processed.add(out)
                 }
+                // ID-card flow: front + back composed onto a single A4 page.
+                var finalPages: List<File> = processed
+                if (idCompose && processed.size >= 2) {
+                    val composed = composeIdPage(processed[0], processed[1], processedDir)
+                    if (composed != null) {
+                        finalPages = listOf(composed) + processed.drop(2)
+                    }
+                }
                 val doc = store.importDocument(
                     name = name,
                     folderId = folderId,
-                    pageSources = processed,
+                    pageSources = finalPages,
                     createPdf = createPdf,
                     vaultTemplateId = templateId,
                     nowMs = System.currentTimeMillis()
@@ -369,13 +561,10 @@ class EditorActivity : Activity() {
                 runOnUiThread {
                     toast(trf(Str.TOAST_SAVED, doc.name))
                 }
-                if (AuthManager.isConnected(this)) {
-                    try {
-                        DriveSync.syncNow(this)
-                    } catch (e: Exception) {
-                        // Sync failure never blocks a local save; Settings → Sync now retries.
-                    }
-                }
+                // On-device OCR: searchable text in the index + a text layer in
+                // the PDF. Then smart sync (no-op unless auto-sync is on).
+                OcrHelper.recognizeAndAttach(this, store, doc.id, wantPdf = createPdf)
+                SyncManager.onLocalChange(this)
                 runOnUiThread {
                     startActivity(
                         Intent(this, MainActivity::class.java)
@@ -387,6 +576,37 @@ class EditorActivity : Activity() {
                 runOnUiThread { toast(trf(Str.TOAST_SAVE_FAIL, e.message ?: "")) }
             }
         }
+    }
+
+    /**
+     * Composes the front and back card images onto one white A4-proportioned
+     * page (1240×1754): front in the top half, back in the bottom half, even
+     * margins, aspect preserved. Returns the composed JPEG file.
+     */
+    private fun composeIdPage(frontFile: File, backFile: File, outDir: File): File? {
+        val front = ImageOps.loadBitmap(frontFile, 2000) ?: return null
+        val back = ImageOps.loadBitmap(backFile, 2000) ?: return null
+        val pageW = 1240
+        val pageH = 1754
+        val margin = 60
+        val slotH = (pageH - margin * 3) / 2
+        val canvasBmp = Bitmap.createBitmap(pageW, pageH, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(canvasBmp)
+        canvas.drawColor(Color.WHITE)
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+        fun drawFit(bmp: Bitmap, slotTop: Int) {
+            val slotW = pageW - margin * 2
+            val scale = minOf(slotW.toFloat() / bmp.width, slotH.toFloat() / bmp.height)
+            val dw = bmp.width * scale
+            val dh = bmp.height * scale
+            val left = margin + (slotW - dw) / 2f
+            val top = slotTop + (slotH - dh) / 2f
+            canvas.drawBitmap(bmp, null, RectF(left, top, left + dw, top + dh), paint)
+        }
+        drawFit(front, margin)
+        drawFit(back, margin * 2 + slotH)
+        val out = File(outDir, "id_combined.jpg")
+        return if (ImageOps.saveJpeg(canvasBmp, out)) out else null
     }
 
     private fun toast(msg: String) = Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()

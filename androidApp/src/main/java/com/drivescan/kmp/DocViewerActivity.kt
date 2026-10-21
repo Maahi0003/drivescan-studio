@@ -1,15 +1,19 @@
 package com.drivescan.kmp
 
 import android.app.Activity
+import android.app.AlertDialog
 import android.content.Intent
+import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.os.Bundle
+import android.text.InputType
 import android.view.GestureDetector
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
+import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
@@ -17,11 +21,16 @@ import android.widget.TextView
 import android.widget.Toast
 import com.drivescan.kmp.data.PersistentStore
 import com.drivescan.kmp.drive.DriveSync
+import com.drivescan.kmp.drive.SyncManager
 import com.drivescan.kmp.scan.ImageOps
+import com.drivescan.kmp.scan.PdfEncrypt
 import com.drivescan.kmp.ui.Lang
 import com.drivescan.kmp.ui.Str
+import com.drivescan.kmp.ui.inputField
+import com.drivescan.kmp.ui.palette
 import com.drivescan.kmp.ui.tr
 import com.drivescan.kmp.ui.trf
+import java.io.File
 import com.drivescan.shared.ScanDocument
 import kotlin.concurrent.thread
 
@@ -123,6 +132,9 @@ class DocViewerActivity : Activity() {
         }
         actions.addView(darkButton(tr(Str.BTN_SHARE)) { shareCurrent() })
         val current = doc
+        if (current != null && current.pageFiles.isNotEmpty()) {
+            actions.addView(darkButton(tr(Str.BTN_SHARE_PASSWORD)) { shareWithPassword() })
+        }
         if (current?.pdfFile != null) {
             actions.addView(darkButton(tr(Str.BTN_OPEN_PDF)) { openPdf() })
         }
@@ -133,10 +145,24 @@ class DocViewerActivity : Activity() {
             actions.addView(darkButton(tr(Str.BTN_BIN)) {
                 store.moveToBin(current.id)
                 toast(tr(Str.TOAST_MOVED_TO_BIN_SHORT))
+                SyncManager.onLocalChange(this)
                 finish()
             })
         }
         root.addView(actions)
+
+        // Page management for multi-page documents (reorder / delete a page).
+        if (current != null && current.pageFiles.size > 1 && !current.inBin) {
+            val manage = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER
+                setPadding(dp(10), dp(0), dp(10), dp(12))
+            }
+            manage.addView(darkButton(tr(Str.BTN_MOVE_PAGE_LEFT)) { moveCurrentPage(-1) })
+            manage.addView(darkButton(tr(Str.BTN_MOVE_PAGE_RIGHT)) { moveCurrentPage(1) })
+            manage.addView(darkButton(tr(Str.BTN_DELETE_PAGE_VIEWER)) { deleteCurrentPage() })
+            root.addView(manage)
+        }
 
         val detector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
             override fun onFling(
@@ -203,6 +229,95 @@ class DocViewerActivity : Activity() {
                 messageView.visibility = View.VISIBLE
                 messageView.text = tr(Str.VIEWER_DRIVE_MSG)
                 indicator.text = tr(Str.INDICATOR_DRIVE)
+            }
+        }
+    }
+
+    // ---- page management ------------------------------------------------------
+
+    private fun moveCurrentPage(delta: Int) {
+        val d = doc ?: return
+        val target = pageIndex + delta
+        if (target !in d.pageFiles.indices) return
+        val names = d.pageFiles.toMutableList()
+        val tmp = names[pageIndex]
+        names[pageIndex] = names[target]
+        names[target] = tmp
+        store.replacePages(d.id, names)
+        doc = store.documentById(d.id)
+        pageIndex = target
+        renderPage()
+        SyncManager.onLocalChange(this)
+    }
+
+    private fun deleteCurrentPage() {
+        val d = doc ?: return
+        if (d.pageFiles.size <= 1) {
+            toast(tr(Str.TOAST_MIN_ONE_PAGE))
+            return
+        }
+        val names = d.pageFiles.toMutableList()
+        names.removeAt(pageIndex)
+        store.replacePages(d.id, names)
+        toast(tr(Str.TOAST_PAGE_DELETED))
+        SyncManager.onLocalChange(this)
+        recreate()
+    }
+
+    // ---- password-protected share ----------------------------------------------
+
+    private fun shareWithPassword() {
+        val d = doc ?: return
+        if (d.pageFiles.isEmpty()) {
+            toast(tr(Str.TOAST_SECURE_NOT_AVAILABLE))
+            return
+        }
+        val input = inputField(tr(Str.SHARE_PW_HINT), palette()).apply {
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+        }
+        AlertDialog.Builder(this)
+            .setTitle(tr(Str.SHARE_PW_TITLE))
+            .setView(input)
+            .setPositiveButton(tr(Str.BTN_SHARE)) { _, _ ->
+                val password = input.text.toString()
+                if (password.isEmpty()) {
+                    toast(tr(Str.TOAST_PW_EMPTY))
+                } else {
+                    prepareAndShareProtected(d, password)
+                }
+            }
+            .setNegativeButton(tr(Str.BTN_CANCEL), null)
+            .show()
+    }
+
+    private fun prepareAndShareProtected(d: ScanDocument, password: String) {
+        toast(tr(Str.TOAST_SECURE_PREPARING))
+        thread {
+            val pages = mutableListOf<PdfEncrypt.Page>()
+            for (name in d.pageFiles) {
+                val file = File(store.docDir(d.id), name)
+                if (!file.exists()) continue
+                val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                BitmapFactory.decodeFile(file.absolutePath, opts)
+                if (opts.outWidth <= 0 || opts.outHeight <= 0) continue
+                pages.add(PdfEncrypt.Page(file.readBytes(), opts.outWidth, opts.outHeight))
+            }
+            val dir = File(cacheDir, "secured").apply { mkdirs() }
+            val out = File(dir, "${d.id}_protected.pdf")
+            val ok = pages.isNotEmpty() && PdfEncrypt.writeEncryptedPdf(pages, password, out)
+            runOnUiThread {
+                if (!ok) {
+                    toast(tr(Str.TOAST_SECURE_NOT_AVAILABLE))
+                    return@runOnUiThread
+                }
+                val uri = ShareProvider.securedUri(out.name)
+                val intent = Intent(Intent.ACTION_SEND).apply {
+                    type = "application/pdf"
+                    putExtra(Intent.EXTRA_STREAM, uri)
+                    putExtra(Intent.EXTRA_SUBJECT, d.name)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                startActivity(Intent.createChooser(intent, trf(Str.SHARE_CHOOSER, d.name)))
             }
         }
     }

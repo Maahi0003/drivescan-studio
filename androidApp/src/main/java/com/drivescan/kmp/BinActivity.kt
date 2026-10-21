@@ -102,6 +102,7 @@ class BinActivity : Activity() {
                         store.restoreFromBin(doc.id)
                         toast(tr(Str.TOAST_RESTORED))
                         render()
+                        com.drivescan.kmp.drive.SyncManager.onLocalChange(this)
                     }
                     1 -> startActivity(
                         Intent(this, DocViewerActivity::class.java).putExtra("docId", doc.id)
@@ -121,6 +122,7 @@ class BinActivity : Activity() {
                 store.deleteForever(doc.id)
                 toast(tr(Str.TOAST_DELETED_FOREVER))
                 render()
+                com.drivescan.kmp.drive.SyncManager.onLocalChange(this)
             }
             .setNegativeButton(tr(Str.BTN_CANCEL), null)
             .show()

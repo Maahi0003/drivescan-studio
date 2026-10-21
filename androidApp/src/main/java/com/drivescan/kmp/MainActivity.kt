@@ -11,8 +11,10 @@ import android.text.TextWatcher
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import android.provider.OpenableColumns
 import android.widget.BaseAdapter
 import android.widget.EditText
+import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
 import android.widget.ImageView
 import android.widget.LinearLayout
@@ -21,6 +23,10 @@ import android.widget.TextView
 import android.widget.Toast
 import com.drivescan.kmp.auth.AuthManager
 import com.drivescan.kmp.data.PersistentStore
+import com.drivescan.kmp.drive.DriveSync
+import com.drivescan.kmp.drive.SyncManager
+import com.drivescan.kmp.ocr.OcrHelper
+import com.drivescan.kmp.scan.ImageOps
 import com.drivescan.kmp.ui.Lang
 import com.drivescan.kmp.ui.Str
 import com.drivescan.kmp.ui.bodyText
@@ -58,6 +64,14 @@ class MainActivity : Activity() {
     private lateinit var driveChip: TextView
     private lateinit var searchInput: EditText
     private lateinit var scanButton: android.widget.Button
+    private lateinit var syncNowButton: android.widget.Button
+    private lateinit var selectionBar: LinearLayout
+    private lateinit var selectionLabel: TextView
+    private lateinit var combineButton: android.widget.Button
+    private lateinit var selectionActionsButton: android.widget.Button
+
+    /** Multi-select state (combine flow); insertion order = combine order. */
+    private val selection = LinkedHashSet<String>()
 
     /** null = All, ROOT = folderId==null docs, otherwise a folder id. */
     private var folderFilter: String? = null
@@ -69,6 +83,9 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
         Lang.init(this)
         setContentView(buildUi())
+        // Smart sync: sync on connectivity return + once at app start (if enabled).
+        SyncManager.registerNetworkCallback(this)
+        SyncManager.onAppStart(this)
         // 30-day bin retention: purge expired items once per app start.
         thread {
             val purged = store.purgeExpiredBin(System.currentTimeMillis(), BIN_RETENTION_MS)
@@ -105,6 +122,14 @@ class MainActivity : Activity() {
             ).apply { topMargin = dp(8) }
         }
         header.addView(driveChip)
+        syncNowButton = ghostButton(tr(Str.BTN_SYNC_NOW), palette).apply {
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = dp(6) }
+            visibility = View.GONE
+            setOnClickListener { manualSync() }
+        }
+        header.addView(syncNowButton)
         root.addView(header)
 
         searchInput = inputField(tr(Str.SEARCH_HINT), palette).apply {
@@ -127,6 +152,37 @@ class MainActivity : Activity() {
             setPadding(dp(20), dp(8), dp(20), dp(8))
         }
         root.addView(HorizontalScrollView(this).apply { addView(folderBar) })
+
+        // Multi-select action bar (combine flow); hidden unless selecting.
+        selectionBar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(20), dp(2), dp(20), dp(6))
+            visibility = View.GONE
+        }
+        selectionLabel = bodyText("", palette, 13.5f).apply {
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        selectionBar.addView(selectionLabel)
+        selectionActionsButton = ghostButton(tr(Str.DOC_ACTIONS_LABEL), palette).apply {
+            visibility = View.GONE
+            setOnClickListener {
+                val only = selection.firstOrNull()?.let { store.documentById(it) }
+                if (only != null) showDocActions(only)
+            }
+        }
+        selectionBar.addView(selectionActionsButton)
+        combineButton = ghostButton("", palette).apply {
+            setOnClickListener { combineSelected() }
+        }
+        selectionBar.addView(combineButton)
+        selectionBar.addView(ghostButton(tr(Str.BTN_CANCEL), palette).apply {
+            setOnClickListener {
+                selection.clear()
+                refreshDocs()
+            }
+        })
+        root.addView(selectionBar)
 
         docList = ListView(this).apply {
             divider = null
@@ -155,7 +211,22 @@ class MainActivity : Activity() {
         }
         root.addView(scanButton)
         root.addView(bottomNav(palette, "home"))
-        return root
+
+        // Floating "+" button: Scan or Upload chooser.
+        val outer = FrameLayout(this).apply { setBackgroundColor(palette.bg) }
+        outer.addView(root, FrameLayout.LayoutParams(-1, -1))
+        val fab = TextView(this).apply {
+            text = "+"
+            textSize = 30f
+            gravity = Gravity.CENTER
+            setTextColor(Color.WHITE)
+            background = rounded(palette.primary, 30)
+            layoutParams = FrameLayout.LayoutParams(dp(58), dp(58), Gravity.END or Gravity.BOTTOM)
+                .apply { setMargins(0, 0, dp(20), dp(150)) }
+            setOnClickListener { showFabChooser() }
+        }
+        outer.addView(fab)
+        return outer
     }
 
     private fun refresh() {
@@ -163,17 +234,49 @@ class MainActivity : Activity() {
         Lang.init(this)
         searchInput.hint = tr(Str.SEARCH_HINT)
         scanButton.text = tr(Str.SCAN_BUTTON)
-        // Drive chip
+        // Drive chip (+ pending-sync / last-sync detail) and the manual Sync now button.
         val connected = AuthManager.isConnected(this)
-        driveChip.text = if (connected) {
-            tr(Str.DRIVE_CONNECTED)
-        } else {
-            tr(Str.DRIVE_NOT_CONNECTED)
+        driveChip.text = when {
+            !connected -> tr(Str.DRIVE_NOT_CONNECTED)
+            else -> {
+                val pending = DriveSync.pendingCount(this)
+                when {
+                    pending > 0 -> tr(Str.DRIVE_CONNECTED) + trf(Str.CHIP_PENDING_SYNC, pending)
+                    else -> {
+                        val last = DriveSync.lastSyncMs(this)
+                        if (last > 0L) {
+                            tr(Str.DRIVE_CONNECTED) + " • " + trf(
+                                Str.CHIP_LAST_SYNCED,
+                                SimpleDateFormat("dd MMM, hh:mm a", Locale.ENGLISH).format(Date(last))
+                            )
+                        } else {
+                            tr(Str.DRIVE_CONNECTED)
+                        }
+                    }
+                }
+            }
         }
         driveChip.setTextColor(if (connected) Color.rgb(46, 125, 50) else palette.textSecondary)
         driveChip.background = rounded(palette.chipBg, 20)
+        syncNowButton.visibility = if (connected) View.VISIBLE else View.GONE
         refreshFolders()
         refreshDocs()
+    }
+
+    private fun manualSync() {
+        toast(tr(Str.TOAST_SYNCING))
+        thread {
+            val message = try {
+                val s = DriveSync.syncNow(this)
+                trf(Str.SYNC_RESULT, s.uploaded, s.updated, s.downloaded, s.trashed)
+            } catch (e: Exception) {
+                trf(Str.SYNC_FAIL, e.message ?: "")
+            }
+            runOnUiThread {
+                toast(message)
+                refresh()
+            }
+        }
     }
 
     private fun chip(label: String, selected: Boolean, onClick: () -> Unit): TextView =
@@ -204,23 +307,37 @@ class MainActivity : Activity() {
 
     private fun refreshDocs() {
         val all = store.documents()
+        selection.retainAll(all.map { it.id }.toSet())
         visibleDocs = all.filter { doc ->
             val folderOk = when (folderFilter) {
                 null -> true
                 ROOT -> doc.folderId == null
                 else -> doc.folderId == folderFilter
             }
-            val searchOk = searchQuery.isEmpty() || doc.name.contains(searchQuery, ignoreCase = true)
+            // Search matches the name AND the on-device OCR text (v1.1.0).
+            val searchOk = searchQuery.isEmpty() ||
+                doc.name.contains(searchQuery, ignoreCase = true) ||
+                doc.ocrText.contains(searchQuery, ignoreCase = true)
             folderOk && searchOk
         }
         docList.adapter = DocAdapter(visibleDocs)
+        updateSelectionBar()
         docList.setOnItemClickListener { _, _, pos, _ ->
             val doc = visibleDocs.getOrNull(pos) ?: return@setOnItemClickListener
-            startActivity(Intent(this, DocViewerActivity::class.java).putExtra("docId", doc.id))
+            if (selection.isNotEmpty()) {
+                toggleSelect(doc.id)
+            } else {
+                startActivity(Intent(this, DocViewerActivity::class.java).putExtra("docId", doc.id))
+            }
         }
         docList.setOnItemLongClickListener { _, _, pos, _ ->
             val doc = visibleDocs.getOrNull(pos) ?: return@setOnItemLongClickListener true
-            showDocActions(doc)
+            if (selection.isEmpty()) {
+                // First long-press enters multi-select (combine) mode.
+                toggleSelect(doc.id)
+            } else {
+                toggleSelect(doc.id)
+            }
             true
         }
         emptyView.visibility = if (visibleDocs.isEmpty()) View.VISIBLE else View.GONE
@@ -228,6 +345,165 @@ class MainActivity : Activity() {
             all.isEmpty() -> tr(Str.EMPTY_NO_DOCS)
             searchQuery.isNotEmpty() -> trf(Str.EMPTY_SEARCH, searchQuery)
             else -> tr(Str.EMPTY_FOLDER)
+        }
+    }
+
+    // ---- multi-select + combine --------------------------------------------
+
+    private fun toggleSelect(docId: String) {
+        if (!selection.add(docId)) selection.remove(docId)
+        refreshDocs()
+    }
+
+    private fun updateSelectionBar() {
+        val active = selection.isNotEmpty()
+        selectionBar.visibility = if (active) View.VISIBLE else View.GONE
+        if (active) {
+            selectionLabel.text = trf(Str.SELECTION_COUNT, selection.size)
+            combineButton.text = trf(Str.COMBINE_BUTTON, selection.size)
+            selectionActionsButton.visibility = if (selection.size == 1) View.VISIBLE else View.GONE
+        }
+    }
+
+    private fun combineSelected() {
+        val ids = selection.toList()
+        if (ids.isEmpty()) return
+        thread {
+            val pages = mutableListOf<java.io.File>()
+            for (id in ids) {
+                val d = store.documentById(id) ?: continue
+                // PDF-only documents (no page images) are skipped — noted simplification.
+                for (name in d.pageFiles) {
+                    val f = java.io.File(store.docDir(d.id), name)
+                    if (f.exists()) pages.add(f)
+                }
+            }
+            if (pages.isEmpty()) {
+                runOnUiThread { toast(tr(Str.TOAST_COMBINE_NONE)) }
+                return@thread
+            }
+            val name = "Combined " + SimpleDateFormat("dd MMM yyyy, hh:mm a", Locale.ENGLISH).format(Date())
+            val doc = store.importDocument(
+                name = name,
+                folderId = targetFolderId(),
+                pageSources = pages,
+                createPdf = true,
+                vaultTemplateId = null,
+                nowMs = System.currentTimeMillis()
+            )
+            runOnUiThread {
+                selection.clear()
+                refresh()
+                toast(tr(Str.COMBINE_DONE))
+            }
+            OcrHelper.recognizeAndAttach(this, store, doc.id, wantPdf = true)
+            SyncManager.onLocalChange(this)
+        }
+    }
+
+    /** Folder the dashboard currently targets for new documents (upload/combine). */
+    private fun targetFolderId(): String? = when (folderFilter) {
+        null, ROOT -> null
+        else -> folderFilter
+    }
+
+    // ---- FAB: scan / upload ---------------------------------------------------
+
+    private fun showFabChooser() {
+        AlertDialog.Builder(this)
+            .setItems(arrayOf(tr(Str.FAB_SCAN), tr(Str.FAB_UPLOAD))) { _, which ->
+                if (which == 0) {
+                    startActivity(Intent(this, ScannerActivity::class.java))
+                } else {
+                    openUploadPicker()
+                }
+            }
+            .show()
+    }
+
+    private fun openUploadPicker() {
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "*/*"
+            putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("image/*", "application/pdf"))
+            putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+        }
+        startActivityForResult(intent, REQ_UPLOAD)
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != REQ_UPLOAD || resultCode != RESULT_OK || data == null) return
+        val uris = mutableListOf<android.net.Uri>()
+        data.clipData?.let { clip ->
+            for (i in 0 until clip.itemCount) uris.add(clip.getItemAt(i).uri)
+        }
+        data.data?.let { if (uris.isEmpty()) uris.add(it) }
+        if (uris.isEmpty()) return
+        thread {
+            var imported = 0
+            for (uri in uris) {
+                val doc = importUpload(uri)
+                if (doc != null) {
+                    imported++
+                    OcrHelper.recognizeAndAttach(this, store, doc.id, wantPdf = true)
+                }
+            }
+            val count = imported
+            runOnUiThread {
+                refresh()
+                toast(
+                    when {
+                        count == 1 -> tr(Str.IMPORT_ONE)
+                        count > 1 -> trf(Str.IMPORT_MANY, count)
+                        else -> tr(Str.TOAST_IMPORT_FAIL)
+                    }
+                )
+            }
+            if (count > 0) SyncManager.onLocalChange(this)
+        }
+    }
+
+    /** Copies one picked file into scan storage as a new document (background thread). */
+    private fun importUpload(uri: android.net.Uri): ScanDocument? {
+        return try {
+            val displayName = queryDisplayName(uri) ?: "Upload"
+            val mime = contentResolver.getType(uri)
+            val isPdf = mime == "application/pdf" || displayName.lowercase().endsWith(".pdf")
+            val importDir = java.io.File(cacheDir, "imports").apply { mkdirs() }
+            val raw = java.io.File(importDir, "up_${System.currentTimeMillis()}_${uri.hashCode()}")
+            val copied = contentResolver.openInputStream(uri)?.use { input ->
+                raw.outputStream().use { input.copyTo(it) }
+                true
+            } ?: false
+            if (!copied || !raw.exists() || raw.length() == 0L) return null
+            val now = System.currentTimeMillis()
+            if (isPdf) {
+                val base = displayName.substringBeforeLast('.').ifBlank { "Upload" }
+                store.importPdfDocument(base, targetFolderId(), raw, null, now)
+            } else {
+                // Normalize the image to a stored JPEG page (also caps huge photos).
+                val bmp = ImageOps.loadBitmap(raw, 2400) ?: return null
+                val pageFile = java.io.File(importDir, "page_${System.currentTimeMillis()}.jpg")
+                if (!ImageOps.saveJpeg(bmp, pageFile)) return null
+                val base = displayName.substringBeforeLast('.').ifBlank {
+                    "Upload " + SimpleDateFormat("dd MMM yyyy, hh:mm a", Locale.ENGLISH).format(Date(now))
+                }
+                store.importDocument(base, targetFolderId(), listOf(pageFile), true, null, now)
+            }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    private fun queryDisplayName(uri: android.net.Uri): String? {
+        return try {
+            contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                val idx = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                if (idx >= 0 && cursor.moveToFirst()) cursor.getString(idx) else null
+            }
+        } catch (e: Exception) {
+            null
         }
     }
 
@@ -267,7 +543,11 @@ class MainActivity : Activity() {
                 orientation = LinearLayout.VERTICAL
                 layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
             }
-            texts.addView(bodyText(doc.name, palette, 15f))
+            val selected = doc.id in selection
+            if (selected) {
+                row.background = rounded(palette.chipBg, 14, palette.primary)
+            }
+            texts.addView(bodyText(if (selected) "✓ ${doc.name}" else doc.name, palette, 15f))
             val meta = StringBuilder()
             meta.append(dateFormat.format(Date(doc.modifiedAtEpochMs)))
             meta.append("  •  " + trf(Str.META_PAGES, doc.pageCount))
@@ -303,6 +583,7 @@ class MainActivity : Activity() {
                         store.removeFromVault(doc.id)
                         toast(tr(Str.TOAST_REMOVED_FROM_VAULT))
                         refresh()
+                        SyncManager.onLocalChange(this)
                     } else {
                         showVaultTemplateDialog(doc)
                     }
@@ -310,6 +591,7 @@ class MainActivity : Activity() {
                         store.moveToBin(doc.id)
                         toast(tr(Str.TOAST_MOVED_TO_BIN))
                         refresh()
+                        SyncManager.onLocalChange(this)
                     }
                 }
             }
@@ -326,6 +608,7 @@ class MainActivity : Activity() {
                 if (name.isNotEmpty()) {
                     store.rename(doc.id, name)
                     refresh()
+                    SyncManager.onLocalChange(this)
                 }
             }
             .setNegativeButton(tr(Str.BTN_CANCEL), null)
@@ -341,6 +624,7 @@ class MainActivity : Activity() {
                 val target = if (which == 0) null else folders[which - 1].id
                 store.moveToFolder(doc.id, target)
                 refresh()
+                SyncManager.onLocalChange(this)
             }
             .show()
     }
@@ -358,6 +642,7 @@ class MainActivity : Activity() {
                 store.setVault(doc.id, templates[which].id)
                 toast(trf(Str.TOAST_ADDED_TO_VAULT, templates[which].displayName))
                 refresh()
+                SyncManager.onLocalChange(this)
             }
             .show()
     }
@@ -404,6 +689,7 @@ class MainActivity : Activity() {
     companion object {
         const val ROOT = "__root__"
         const val BIN_RETENTION_MS = 30L * 24 * 60 * 60 * 1000
+        private const val REQ_UPLOAD = 71
         val dateFormat = SimpleDateFormat("dd MMM yyyy, hh:mm a", Locale.ENGLISH)
     }
 }

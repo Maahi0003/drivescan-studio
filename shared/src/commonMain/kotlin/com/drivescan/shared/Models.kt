@@ -18,7 +18,9 @@ data class ScanDocument(
     /** File names (relative to the doc's own folder) of page images, in order. */
     val pageFiles: List<String> = emptyList(),
     /** File name of the generated PDF inside the doc's folder, if any. */
-    val pdfFile: String? = null
+    val pdfFile: String? = null,
+    /** On-device OCR text of all pages ("" until OCR has run). Searchable. */
+    val ocrText: String = ""
 ) {
     val inBin: Boolean get() = deletedAtEpochMs != null
 }

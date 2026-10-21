@@ -51,6 +51,23 @@ object DriveSync {
     fun lastSyncMs(context: Context): Long =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getLong("last_sync", 0L)
 
+    /** How many local changes the next sync would push (new + changed docs, queued deletes). */
+    fun pendingCount(context: Context): Int {
+        val store = PersistentStore.get(context)
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        var count = prefs.getStringSet("pending_trash", emptySet())?.size ?: 0
+        for (doc in store.documents(includeBin = true)) {
+            val hasPayload = store.pdfFile(doc) != null || store.pageFile(doc, 0) != null
+            if (!hasPayload) continue
+            if (doc.driveId == null) {
+                count++
+            } else if (doc.modifiedAtEpochMs > prefs.getLong("syncedmod_${doc.id}", -1L)) {
+                count++
+            }
+        }
+        return count
+    }
+
     /** Records a Drive file that must be permanently deleted on next sync. */
     fun queueTrash(context: Context, driveId: String) {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)

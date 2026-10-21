@@ -235,6 +235,9 @@ class VaultActivity : Activity() {
                     startActivity(
                         Intent(this, ScannerActivity::class.java)
                             .putExtra("vaultTemplateId", templateId)
+                            // ID-type templates start the scanner in ID-card mode
+                            // (front + back composed onto one page).
+                            .putExtra("idCardMode", templateId in ID_TEMPLATE_IDS)
                     )
                 }
             }
@@ -327,5 +330,8 @@ class VaultActivity : Activity() {
     companion object {
         private const val PREFS_NAME = "drivescan_kmp"
         private const val PIN_KEY = "vault_pin_record"
+
+        /** Vault templates that are ID cards (front+back single-page scans). */
+        val ID_TEMPLATE_IDS = setOf("aadhaar", "pan", "driving-licence", "voter-id")
     }
 }
