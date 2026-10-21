@@ -18,16 +18,20 @@ import android.widget.Toast
 import com.drivescan.kmp.data.PersistentStore
 import com.drivescan.kmp.ui.Lang
 import com.drivescan.kmp.ui.Str
+import com.drivescan.kmp.ui.applyBackdrop
 import com.drivescan.kmp.ui.bodyText
 import com.drivescan.kmp.ui.bottomNav
 import com.drivescan.kmp.ui.card
 import com.drivescan.kmp.ui.dp
 import com.drivescan.kmp.ui.ghostButton
+import com.drivescan.kmp.ui.glassSubtleBg
 import com.drivescan.kmp.ui.inputField
 import com.drivescan.kmp.ui.palette
 import com.drivescan.kmp.ui.primaryButton
+import com.drivescan.kmp.ui.rounded
 import com.drivescan.kmp.ui.sectionTitle
 import com.drivescan.kmp.ui.smallText
+import com.drivescan.kmp.ui.styleGlassDialog
 import com.drivescan.kmp.ui.titleText
 import com.drivescan.kmp.ui.tr
 import com.drivescan.kmp.ui.trf
@@ -58,7 +62,7 @@ class VaultActivity : Activity() {
         Lang.init(this)
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(palette.bg)
+            applyBackdrop(palette)
         }
         container = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -109,8 +113,41 @@ class VaultActivity : Activity() {
         }
     }
 
+    /** Centred glass lock medallion shown on the lock / set-PIN cards
+     *  (Stitch vault mockup). */
+    private fun lockGlyphCircle(): LinearLayout {
+        val wrap = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER
+            setPadding(0, dp(2), 0, dp(12))
+        }
+        wrap.addView(TextView(this).apply {
+            text = "🔒"
+            textSize = 30f
+            gravity = android.view.Gravity.CENTER
+            background = glassSubtleBg(palette, 999)
+            layoutParams = LinearLayout.LayoutParams(dp(72), dp(72))
+        })
+        return wrap
+    }
+
+    /** Per-template glyph for the slot icon wells. */
+    private fun templateGlyph(id: String): String = when (id) {
+        "aadhaar" -> "🪪"
+        "pan" -> "💳"
+        "passport" -> "🛂"
+        "driving-licence" -> "🚗"
+        "voter-id" -> "🗳"
+        "ration-card" -> "📕"
+        "marksheet-10", "marksheet-12" -> "🎓"
+        "degree" -> "📜"
+        "bank-passbook" -> "🏦"
+        else -> "📄"
+    }
+
     private fun renderSetPin() {
         val cardLayout = card(palette)
+        cardLayout.addView(lockGlyphCircle())
         cardLayout.addView(bodyText(tr(Str.SET_PIN_INTRO), palette))
         val pin = inputField(tr(Str.INPUT_NEW_PIN), palette).apply {
             inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD
@@ -142,6 +179,7 @@ class VaultActivity : Activity() {
 
     private fun renderLocked() {
         val cardLayout = card(palette)
+        cardLayout.addView(lockGlyphCircle())
         cardLayout.addView(bodyText(tr(Str.LOCKED_INTRO), palette))
         val pin = inputField(tr(Str.INPUT_VAULT_PIN), palette).apply {
             inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD
@@ -179,13 +217,34 @@ class VaultActivity : Activity() {
         for (template in VaultTemplates.all) {
             val doc = store.docForTemplate(template.id)
             val row = card(palette)
-            row.addView(bodyText(template.displayName, palette, 15.5f))
-            row.addView(
+            // v1.3.0: glass tile row — icon well + name/status (Stitch vault).
+            val rowInner = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = android.view.Gravity.CENTER_VERTICAL
+            }
+            rowInner.addView(TextView(this).apply {
+                text = templateGlyph(template.id)
+                textSize = 19f
+                gravity = android.view.Gravity.CENTER
+                background = if (doc != null) {
+                    rounded(palette.chipBg, 12)
+                } else {
+                    glassSubtleBg(palette, 12)
+                }
+                layoutParams = LinearLayout.LayoutParams(dp(42), dp(42)).apply {
+                    marginEnd = dp(12)
+                }
+            })
+            val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+            col.addView(bodyText(template.displayName, palette, 15.5f))
+            col.addView(
                 smallText(
                     if (doc != null) trf(Str.SLOT_FILLED_NAME, doc.name) else tr(Str.SLOT_EMPTY),
                     palette
                 )
             )
+            rowInner.addView(col)
+            row.addView(rowInner)
             row.setOnClickListener {
                 if (doc != null) openDoc(doc) else showAddToSlot(template.id, template.displayName)
             }
@@ -225,7 +284,7 @@ class VaultActivity : Activity() {
     }
 
     private fun showAddToSlot(templateId: String, templateName: String) {
-        AlertDialog.Builder(this)
+        val dialog = AlertDialog.Builder(this)
             .setTitle(trf(Str.ADD_TO_SLOT_TITLE, templateName))
             .setItems(arrayOf(tr(Str.ADD_PICK_EXISTING), tr(Str.ADD_SCAN_NOW))) { _, which ->
                 if (which == 0) {
@@ -241,7 +300,9 @@ class VaultActivity : Activity() {
                     )
                 }
             }
-            .show()
+            .create()
+        styleGlassDialog(dialog, palette)
+        dialog.show()
     }
 
     private fun pickExistingDoc(templateId: String) {
@@ -250,12 +311,14 @@ class VaultActivity : Activity() {
             toast(tr(Str.TOAST_NO_DOC_AVAILABLE))
             return
         }
-        AlertDialog.Builder(this)
+        val dialog = AlertDialog.Builder(this)
             .setTitle(tr(Str.PICK_DOC_TITLE))
             .setItems(candidates.map { it.name }.toTypedArray()) { _, which ->
                 assignToSlot(candidates[which], templateId)
             }
-            .show()
+            .create()
+        styleGlassDialog(dialog, palette)
+        dialog.show()
     }
 
     private fun assignToSlot(doc: ScanDocument, templateId: String) {
@@ -269,7 +332,7 @@ class VaultActivity : Activity() {
     }
 
     private fun showFilledSlotOptions(doc: ScanDocument, templateName: String) {
-        AlertDialog.Builder(this)
+        val dialog = AlertDialog.Builder(this)
             .setTitle(templateName)
             .setItems(arrayOf(tr(Str.ACTION_OPEN), tr(Str.SLOT_OPT_REPLACE), tr(Str.ACTION_REMOVE_VAULT))) { _, which ->
                 when (which) {
@@ -282,7 +345,9 @@ class VaultActivity : Activity() {
                     }
                 }
             }
-            .show()
+            .create()
+        styleGlassDialog(dialog, palette)
+        dialog.show()
     }
 
     // ---- biometrics -------------------------------------------------------------

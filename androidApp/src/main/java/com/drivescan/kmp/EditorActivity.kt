@@ -33,13 +33,18 @@ import com.drivescan.kmp.scan.ImageOps
 import com.drivescan.kmp.scan.PageFilter
 import com.drivescan.kmp.ui.Lang
 import com.drivescan.kmp.ui.Str
+import com.drivescan.kmp.ui.applyBackdrop
 import com.drivescan.kmp.ui.bodyText
+import com.drivescan.kmp.ui.dp
 import com.drivescan.kmp.ui.ghostButton
+import com.drivescan.kmp.ui.glassBg
+import com.drivescan.kmp.ui.glassSubtleBg
 import com.drivescan.kmp.ui.inputField
 import com.drivescan.kmp.ui.palette
 import com.drivescan.kmp.ui.primaryButton
 import com.drivescan.kmp.ui.rounded
 import com.drivescan.kmp.ui.smallText
+import com.drivescan.kmp.ui.styleGlassDialog
 import com.drivescan.kmp.ui.tr
 import com.drivescan.kmp.ui.trf
 import com.drivescan.shared.VaultTemplates
@@ -88,6 +93,7 @@ class EditorActivity : Activity() {
     private lateinit var cornerView: CornerView
     private lateinit var pageLabel: TextView
     private lateinit var strip: LinearLayout
+    private val filterChips = mutableMapOf<String, Button>()
     private var previewBitmap: Bitmap? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -118,14 +124,19 @@ class EditorActivity : Activity() {
     private fun dp(v: Int): Int = (v * resources.displayMetrics.density).toInt()
 
     private fun buildUi(): View {
+        // v1.3.0: theme backdrop + floating glass bars (Stitch editor mockup).
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(palette.bg)
+            applyBackdrop(palette)
         }
         val top = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(16), dp(12), dp(16), dp(12))
+            background = glassBg(palette, 0)
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+            )
         }
         top.addView(TextView(this).apply {
             text = tr(Str.EDITOR_TITLE)
@@ -159,11 +170,14 @@ class EditorActivity : Activity() {
             gravity = Gravity.CENTER
             setPadding(dp(10), dp(8), dp(10), dp(2))
         }
+        filterChips.clear()
         for (f in PageFilter.values()) {
-            filtersRow.addView(darkChip(filterLabel(f)) {
+            val chipButton = darkChip(filterLabel(f)) {
                 EditorSession.filters[currentPath()] = f
                 showPage(current)
-            })
+            }
+            filterChips[f.name] = chipButton
+            filtersRow.addView(chipButton)
         }
         root.addView(filtersRow)
 
@@ -213,12 +227,27 @@ class EditorActivity : Activity() {
             textSize = 13f
             isAllCaps = false
             setTextColor(palette.text)
-            background = rounded(palette.card, palette.radius, palette.cardBorder)
+            background = glassSubtleBg(palette, palette.radius)
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT
             ).apply { marginEnd = dp(8) }
             setOnClickListener { onClick() }
         }
+
+    /** Selected-filter highlight (v1.3.0): the active filter chip is solid
+     *  primary; the rest stay glass. */
+    private fun refreshFilterChips() {
+        val active = EditorSession.filters[currentPath()] ?: PageFilter.ORIGINAL
+        for ((name, chipButton) in filterChips) {
+            if (name == active.name) {
+                chipButton.background = rounded(palette.primaryContainer, palette.radius)
+                chipButton.setTextColor(palette.onPrimaryContainer)
+            } else {
+                chipButton.background = glassSubtleBg(palette, palette.radius)
+                chipButton.setTextColor(palette.text)
+            }
+        }
+    }
 
     private fun filterLabel(f: PageFilter): String = when (f) {
         PageFilter.ORIGINAL -> tr(Str.FILTER_ORIGINAL)
@@ -248,6 +277,7 @@ class EditorActivity : Activity() {
         cornerView.bind(filtered, cornersFor(path))
         pageLabel.text = trf(Str.PAGE_LABEL, current + 1, pagePaths.size)
         refreshStrip()
+        refreshFilterChips()
     }
 
     private fun refreshStrip() {
@@ -370,6 +400,7 @@ class EditorActivity : Activity() {
             .create()
             .also { dialog ->
                 dialog.show()
+                styleGlassDialog(dialog, palette)
                 // Keep the dialog open on Clear so the user can redraw.
                 dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener { pad.clearPad() }
             }
@@ -495,7 +526,7 @@ class EditorActivity : Activity() {
         formatGroup.addView(jpgRadio)
         container.addView(formatGroup)
 
-        AlertDialog.Builder(this)
+        val dialog = AlertDialog.Builder(this)
             .setTitle(tr(Str.SAVE_DIALOG_TITLE))
             .setView(container)
             .setPositiveButton(tr(Str.BTN_SAVE)) { _, _ ->
@@ -514,7 +545,9 @@ class EditorActivity : Activity() {
                 processAndSave(name, folderId, templateId, createPdf)
             }
             .setNegativeButton(tr(Str.BTN_CANCEL), null)
-            .show()
+            .create()
+        styleGlassDialog(dialog, palette)
+        dialog.show()
     }
 
     private fun processAndSave(name: String, folderId: String?, templateId: String?, createPdf: Boolean) {

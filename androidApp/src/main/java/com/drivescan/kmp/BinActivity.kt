@@ -13,12 +13,16 @@ import com.drivescan.kmp.data.PersistentStore
 import com.drivescan.kmp.drive.DriveSync
 import com.drivescan.kmp.ui.Lang
 import com.drivescan.kmp.ui.Str
+import com.drivescan.kmp.ui.applyBackdrop
 import com.drivescan.kmp.ui.bodyText
 import com.drivescan.kmp.ui.bottomNav
 import com.drivescan.kmp.ui.card
 import com.drivescan.kmp.ui.dp
+import com.drivescan.kmp.ui.glassSubtleBg
 import com.drivescan.kmp.ui.palette
+import com.drivescan.kmp.ui.rounded
 import com.drivescan.kmp.ui.smallText
+import com.drivescan.kmp.ui.styleGlassDialog
 import com.drivescan.kmp.ui.titleText
 import com.drivescan.kmp.ui.tr
 import com.drivescan.kmp.ui.trf
@@ -39,7 +43,7 @@ class BinActivity : Activity() {
         Lang.init(this)
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(palette.bg)
+            applyBackdrop(palette)
         }
         container = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -81,20 +85,44 @@ class BinActivity : Activity() {
             val daysUsed = ((now - deletedAt) / DAY_MS).toInt()
             val daysLeft = (RETENTION_DAYS - daysUsed).coerceAtLeast(0)
             val row = card(palette)
-            row.addView(bodyText(doc.name, palette, 15f))
-            row.addView(
+            // v1.3.0: name/meta + countdown pill (Stitch bin mockup).
+            val rowInner = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = android.view.Gravity.CENTER_VERTICAL
+            }
+            val col = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            }
+            col.addView(bodyText(doc.name, palette, 15f))
+            col.addView(
                 smallText(
                     trf(Str.BIN_META, doc.pageCount, daysLeft),
                     palette
                 )
             )
+            rowInner.addView(col)
+            val urgent = daysLeft <= 7
+            rowInner.addView(android.widget.TextView(this).apply {
+                text = "⏳ " + trf(Str.BIN_DAYS_LEFT, daysLeft)
+                textSize = 11f
+                setPadding(dp(9), dp(4), dp(9), dp(4))
+                if (urgent) {
+                    background = rounded(palette.pendingBg, 999, palette.pendingBorder)
+                    setTextColor(palette.pendingText)
+                } else {
+                    background = glassSubtleBg(palette, 999)
+                    setTextColor(palette.textSecondary)
+                }
+            })
+            row.addView(rowInner)
             row.setOnClickListener { showActions(doc) }
             container.addView(row)
         }
     }
 
     private fun showActions(doc: ScanDocument) {
-        AlertDialog.Builder(this)
+        val dialog = AlertDialog.Builder(this)
             .setTitle(doc.name)
             .setItems(arrayOf(tr(Str.BIN_OPT_RESTORE), tr(Str.BIN_OPT_VIEW), tr(Str.BIN_OPT_DELETE_FOREVER))) { _, which ->
                 when (which) {
@@ -110,11 +138,13 @@ class BinActivity : Activity() {
                     2 -> confirmDeleteForever(doc)
                 }
             }
-            .show()
+            .create()
+        styleGlassDialog(dialog, palette)
+        dialog.show()
     }
 
     private fun confirmDeleteForever(doc: ScanDocument) {
-        AlertDialog.Builder(this)
+        val dialog = AlertDialog.Builder(this)
             .setTitle(tr(Str.DELETE_FOREVER_TITLE))
             .setMessage(trf(Str.DELETE_FOREVER_MSG, doc.name))
             .setPositiveButton(tr(Str.BTN_DELETE)) { _, _ ->
@@ -125,7 +155,9 @@ class BinActivity : Activity() {
                 com.drivescan.kmp.drive.SyncManager.onLocalChange(this)
             }
             .setNegativeButton(tr(Str.BTN_CANCEL), null)
-            .show()
+            .create()
+        styleGlassDialog(dialog, palette)
+        dialog.show()
     }
 
     private fun toast(msg: String) = Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()

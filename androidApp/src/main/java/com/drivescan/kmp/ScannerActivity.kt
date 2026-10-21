@@ -29,6 +29,7 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
+import com.drivescan.kmp.data.PersistentStore
 import com.drivescan.kmp.scan.DocDetector
 import com.drivescan.kmp.ui.Lang
 import com.drivescan.kmp.ui.Palette
@@ -61,9 +62,15 @@ class ScannerActivity : Activity() {
     private lateinit var guideView: GuideView
     private lateinit var countLabel: TextView
     private lateinit var pillLabel: TextView
-    private lateinit var modeButton: Button
+    private lateinit var docSegButton: TextView
+    private lateinit var idSegButton: TextView
     private lateinit var torchButton: Button
     private lateinit var autoButton: Button
+    private lateinit var stepRow: LinearLayout
+    private lateinit var stepChip1: LinearLayout
+    private lateinit var stepChip2: LinearLayout
+    private lateinit var batchStrip: LinearLayout
+    private lateinit var batchScroll: android.widget.HorizontalScrollView
 
     private lateinit var sessionDir: File
     private val pageFiles = mutableListOf<File>()
@@ -103,10 +110,10 @@ class ScannerActivity : Activity() {
             .getBoolean("auto_capture", true)
         setContentView(buildUi())
         if (idCardMode) {
-            modeButton.text = tr(Str.BTN_ID_MODE)
-            guideView.idCardMode = true
+            setIdMode(true)
         }
         autoButton.text = if (autoCapture) tr(Str.BTN_AUTO_ON) else tr(Str.BTN_AUTO_OFF)
+        styleAutoButton()
         updateCount()
         if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
             requestPermissions(arrayOf(Manifest.permission.CAMERA), REQ_CAMERA)
@@ -146,19 +153,25 @@ class ScannerActivity : Activity() {
 
     // ---- UI -----------------------------------------------------------------
 
-    /** Themed chrome colors, derived from the active palette (v1.2.0):
-     *  Midnight charcoal surfaces in dark mode, Gulmohar warm surfaces in light. */
-    private val chromeText: Int get() = palette.text
+    /** v1.3.0 HUD chrome (Stitch scanner mockups): the top pills are theme
+     *  glass (white glass / dark text in Frosted Teal; smoked obsidian /
+     *  light text in Obsidian). The bottom control sheet is deep glass in
+     *  both themes — deep emerald-black in light, near-black in dark — with
+     *  light text, exactly as in the mockups. */
+    private val chromeText: Int get() = Color.rgb(240, 244, 242)
     private val chromePillBg: Int
-        get() = if (palette.dark) Color.argb(170, 21, 26, 33) else Color.argb(190, 255, 255, 255)
+        get() = if (palette.dark) Color.argb(217, 18, 24, 28) else Color.argb(204, 255, 255, 255)
+    private val chromePillText: Int
+        get() = if (palette.dark) Color.rgb(240, 244, 242) else Color.rgb(28, 28, 23)
     private val chromeBarBg: Int
-        get() = if (palette.dark) Color.argb(190, 12, 15, 20) else Color.argb(215, 255, 247, 236)
-    private val chromeBtnBg: Int
-        get() = if (palette.dark) Color.argb(160, 27, 34, 44) else Color.argb(170, 255, 233, 219)
+        get() = if (palette.dark) Color.argb(230, 10, 13, 16) else Color.argb(232, 9, 33, 28)
+    private val chromeBtnBg: Int get() = Color.argb(38, 255, 255, 255)
+    private val chromeBorder: Int
+        get() = if (palette.dark) Color.argb(31, 255, 255, 255) else Color.argb(150, 255, 255, 255)
 
     private fun buildUi(): View {
         val root = FrameLayout(this).apply {
-            setBackgroundColor(if (palette.dark) palette.scannerBg else palette.bg)
+            setBackgroundColor(palette.scannerBg)
         }
 
         textureView = TextureView(this)
@@ -174,9 +187,10 @@ class ScannerActivity : Activity() {
         root.addView(textureView, FrameLayout.LayoutParams(-1, -1))
 
         guideView = GuideView(this)
-        guideView.accentColor = palette.primary
+        guideView.accentColor = palette.primaryContainer
         root.addView(guideView, FrameLayout.LayoutParams(-1, -1))
 
+        // ---- Top HUD: status pill (+ vault pill), close -----------------------
         val topBar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -184,40 +198,96 @@ class ScannerActivity : Activity() {
         }
         pillLabel = TextView(this).apply {
             text = tr(Str.PILL_LOOKING)
-            setTextColor(chromeText)
+            setTextColor(chromePillText)
             textSize = 13.5f
             setPadding(dp(14), dp(8), dp(14), dp(8))
-            background = roundedBg(chromePillBg, 20)
+            background = roundedBg(chromePillBg, 20, chromeBorder)
         }
         topBar.addView(pillLabel)
+        if (intent.getStringExtra("vaultTemplateId") != null) {
+            topBar.addView(TextView(this).apply {
+                text = "🔒 " + tr(Str.PILL_VAULT_SAFE)
+                setTextColor(chromePillText)
+                textSize = 12.5f
+                setPadding(dp(12), dp(8), dp(12), dp(8))
+                background = roundedBg(chromePillBg, 20, chromeBorder)
+                layoutParams = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT
+                ).apply { marginStart = dp(8) }
+            })
+        }
         topBar.addView(View(this), LinearLayout.LayoutParams(0, 1, 1f))
         val closeBtn = Button(this).apply {
             text = "✕"
-            setTextColor(chromeText)
-            background = roundedBg(chromePillBg, 24)
+            setTextColor(chromePillText)
+            background = roundedBg(chromePillBg, 24, chromeBorder)
             setOnClickListener { finish() }
         }
         topBar.addView(closeBtn)
         root.addView(topBar, FrameLayout.LayoutParams(-1, -2, Gravity.TOP))
 
+        // ---- ID-card step header (mockup screen 4): STEP 1/2 cards -------------
+        stepRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(dp(16), dp(2), dp(16), dp(0))
+            visibility = View.GONE
+        }
+        stepChip1 = stepChip(1)
+        stepChip2 = stepChip(2)
+        stepRow.addView(stepChip1)
+        stepRow.addView(stepChip2)
+        root.addView(
+            stepRow,
+            FrameLayout.LayoutParams(-1, -2, Gravity.TOP).apply { topMargin = dp(64) }
+        )
+
+        // ---- Bottom control sheet (deep glass) ---------------------------------
         val bottom = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(16), dp(10), dp(16), dp(18))
+            setPadding(dp(16), dp(10), dp(16), dp(14))
             setBackgroundColor(chromeBarBg)
         }
+        // Segmented Document / ID Card control (Stitch HUD).
         val modes = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
         }
-        modeButton = smallDarkButton(tr(Str.BTN_DOC_MODE)) { toggleMode() }
+        val segWrap = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            background = roundedBg(chromeBtnBg, 999, chromeBorder)
+            setPadding(dp(4), dp(4), dp(4), dp(4))
+        }
+        docSegButton = segButton(tr(Str.BTN_DOC_MODE)) { setIdMode(false) }
+        idSegButton = segButton(tr(Str.BTN_ID_MODE)) { setIdMode(true) }
+        segWrap.addView(docSegButton)
+        segWrap.addView(idSegButton)
+        modes.addView(segWrap)
+        bottom.addView(modes)
+
+        val tools = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            setPadding(0, dp(10), 0, 0)
+        }
         torchButton = smallDarkButton(tr(Str.BTN_TORCH_OFF)) { toggleTorch() }
         autoButton = smallDarkButton(tr(Str.BTN_AUTO_ON)) { toggleAutoCapture() }
         val galleryBtn = smallDarkButton(tr(Str.BTN_GALLERY)) { openGallery() }
-        modes.addView(modeButton)
-        modes.addView(torchButton)
-        modes.addView(autoButton)
-        modes.addView(galleryBtn)
-        bottom.addView(modes)
+        tools.addView(torchButton)
+        tools.addView(autoButton)
+        tools.addView(galleryBtn)
+        bottom.addView(tools)
+
+        // Captured-pages strip ("BATCH" in the mockup).
+        batchScroll = android.widget.HorizontalScrollView(this).apply {
+            isHorizontalScrollBarEnabled = false
+            visibility = View.GONE
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { setMargins(0, dp(10), 0, 0) }
+        }
+        batchStrip = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        batchScroll.addView(batchStrip)
+        bottom.addView(batchScroll)
 
         val captureRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -233,34 +303,157 @@ class ScannerActivity : Activity() {
         val captureBtn = Button(this).apply {
             text = "◉"
             textSize = 30f
-            setTextColor(palette.onPrimary)
-            background = roundedBg(palette.primary, 40)
-            layoutParams = LinearLayout.LayoutParams(dp(72), dp(72))
+            layoutParams = LinearLayout.LayoutParams(dp(76), dp(76))
             setOnClickListener { capturePhoto(null) }
+            if (palette.dark) {
+                // Obsidian: bright disc with a radiant-mint ring.
+                setTextColor(Color.rgb(11, 15, 18))
+                val d = android.graphics.drawable.GradientDrawable()
+                d.shape = android.graphics.drawable.GradientDrawable.OVAL
+                d.setColor(Color.rgb(241, 245, 244))
+                d.setStroke(dp(4), palette.primaryContainer)
+                background = d
+            } else {
+                // Frosted: teal-glass disc with a white rim.
+                setTextColor(Color.WHITE)
+                val d = android.graphics.drawable.GradientDrawable()
+                d.shape = android.graphics.drawable.GradientDrawable.OVAL
+                d.setColor(Color.argb(150, 12, 98, 81))
+                d.setStroke(dp(3), Color.argb(200, 255, 255, 255))
+                background = d
+            }
         }
         captureRow.addView(captureBtn)
         val doneBtn = Button(this).apply {
             text = tr(Str.BTN_DONE)
-            setTextColor(palette.onSuccess)
+            setTextColor(palette.onPrimaryContainer)
             isAllCaps = false
-            background = roundedBg(palette.success, palette.radius)
+            background = roundedBg(palette.primaryContainer, 999)
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
                 .apply { marginStart = dp(14) }
             setOnClickListener { goToEditor() }
         }
         captureRow.addView(doneBtn)
         bottom.addView(captureRow)
+
+        bottom.addView(TextView(this).apply {
+            text = "💡 " + tr(Str.SCAN_TIP)
+            textSize = 11.5f
+            gravity = Gravity.CENTER
+            setTextColor(Color.argb(190, 255, 255, 255))
+            setPadding(0, dp(10), 0, 0)
+        })
         root.addView(bottom, FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM))
+        refreshModeSegments()
+        refreshStepChips()
         return root
+    }
+
+    /** One step card of the ID-mode header ("STEP 1 OF 2 / Front Side"). */
+    private fun stepChip(step: Int): LinearLayout {
+        val chipLayout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(14), dp(9), dp(14), dp(9))
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+                .apply { if (step == 1) marginEnd = dp(10) }
+        }
+        chipLayout.addView(TextView(this).apply {
+            text = trf(Str.ID_STEP_LABEL, step)
+            textSize = 10.5f
+            setTextColor(chromeText)
+        })
+        chipLayout.addView(TextView(this).apply {
+            text = if (step == 1) tr(Str.ID_STEP_FRONT) else tr(Str.ID_STEP_BACK)
+            textSize = 15.5f
+            setTextColor(chromeText)
+            typeface = android.graphics.Typeface.create(
+                android.graphics.Typeface.SANS_SERIF, android.graphics.Typeface.BOLD
+            )
+        })
+        return chipLayout
+    }
+
+    /** Step cards: the current step is solid primary, the other is glass. */
+    private fun refreshStepChips() {
+        if (!::stepChip1.isInitialized) return
+        stepRow.visibility = if (idCardMode) View.VISIBLE else View.GONE
+        if (!idCardMode) return
+        val activeStep = when {
+            pageFiles.isEmpty() -> 1
+            pageFiles.size == 1 -> 2
+            else -> 2
+        }
+        fun style(chipLayout: LinearLayout, active: Boolean) {
+            chipLayout.background = if (active) {
+                roundedBg(palette.primaryContainer, palette.radius)
+            } else {
+                roundedBg(chromePillBg, palette.radius, chromeBorder)
+            }
+            for (i in 0 until chipLayout.childCount) {
+                val tv = chipLayout.getChildAt(i) as TextView
+                tv.setTextColor(
+                    if (active) palette.onPrimaryContainer
+                    else if (palette.dark) chromeText else Color.rgb(28, 28, 23)
+                )
+            }
+        }
+        style(stepChip1, activeStep == 1)
+        style(stepChip2, activeStep == 2)
+    }
+
+    private fun segButton(label: String, onClick: () -> Unit): TextView =
+        TextView(this).apply {
+            text = label
+            textSize = 13.5f
+            gravity = Gravity.CENTER
+            setPadding(dp(16), dp(8), dp(16), dp(8))
+            setOnClickListener { onClick() }
+        }
+
+    /** Segmented control: active segment = solid primary, inactive = clear. */
+    private fun refreshModeSegments() {
+        if (!::docSegButton.isInitialized) return
+        fun style(seg: TextView, active: Boolean) {
+            if (active) {
+                seg.background = roundedBg(palette.primaryContainer, 999)
+                seg.setTextColor(palette.onPrimaryContainer)
+                seg.typeface = android.graphics.Typeface.create(
+                    android.graphics.Typeface.SANS_SERIF, android.graphics.Typeface.BOLD
+                )
+            } else {
+                seg.background = null
+                seg.setTextColor(chromeText)
+                seg.typeface = android.graphics.Typeface.create(
+                    android.graphics.Typeface.SANS_SERIF, android.graphics.Typeface.NORMAL
+                )
+            }
+        }
+        style(docSegButton, !idCardMode)
+        style(idSegButton, idCardMode)
+    }
+
+    /** The AUTO pill glows in the accent while auto-capture is on. */
+    private fun styleAutoButton() {
+        if (!::autoButton.isInitialized) return
+        autoButton.background = if (autoCapture) {
+            roundedBg(
+                Color.argb(56, Color.red(palette.primaryContainer), Color.green(palette.primaryContainer), Color.blue(palette.primaryContainer)),
+                palette.radius, palette.primaryContainer
+            )
+        } else {
+            roundedBg(chromeBtnBg, palette.radius, chromeBorder)
+        }
+        autoButton.setTextColor(if (autoCapture) palette.primaryContainer else chromeText)
     }
 
     private fun dp(v: Int): Int = (v * resources.displayMetrics.density).toInt()
 
-    private fun roundedBg(color: Int, radiusDp: Int): android.graphics.drawable.GradientDrawable {
+    private fun roundedBg(color: Int, radiusDp: Int, borderColor: Int? = null): android.graphics.drawable.GradientDrawable {
         val d = android.graphics.drawable.GradientDrawable()
         d.shape = android.graphics.drawable.GradientDrawable.RECTANGLE
         d.cornerRadius = radiusDp * resources.displayMetrics.density
         d.setColor(color)
+        if (borderColor != null) d.setStroke(dp(1), borderColor)
         return d
     }
 
@@ -270,7 +463,7 @@ class ScannerActivity : Activity() {
             textSize = 13f
             isAllCaps = false
             setTextColor(chromeText)
-            background = roundedBg(chromeBtnBg, palette.radius)
+            background = roundedBg(chromeBtnBg, palette.radius, chromeBorder)
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT
             ).apply { marginEnd = dp(8) }
@@ -284,6 +477,44 @@ class ScannerActivity : Activity() {
             else -> trf(Str.COUNT_MANY, pageFiles.size)
         }
         refreshPill()
+        refreshStepChips()
+        refreshBatchStrip()
+    }
+
+    /** Captured-page thumbnails ("BATCH" strip in the mockup). */
+    private fun refreshBatchStrip() {
+        if (!::batchStrip.isInitialized) return
+        batchStrip.removeAllViews()
+        batchScroll.visibility = if (pageFiles.isEmpty()) View.GONE else View.VISIBLE
+        pageFiles.forEachIndexed { i, f ->
+            val iv = android.widget.ImageView(this).apply {
+                scaleType = android.widget.ImageView.ScaleType.CENTER_CROP
+                layoutParams = LinearLayout.LayoutParams(dp(40), dp(52)).apply {
+                    marginEnd = dp(8)
+                }
+                val d = android.graphics.drawable.GradientDrawable()
+                d.cornerRadius = dp(8).toFloat()
+                d.setStroke(dp(1), chromeBorder)
+                background = d
+                clipToOutline = true
+            }
+            batchStrip.addView(iv)
+            Thread {
+                val bmp = PersistentStore.decodeThumbnail(f, 120)
+                if (bmp != null) runOnUiThread { iv.setImageBitmap(bmp) }
+            }.start()
+            batchStrip.addView(TextView(this).apply {
+                text = "${i + 1}"
+                textSize = 10f
+                setTextColor(palette.onPrimaryContainer)
+                gravity = Gravity.CENTER
+                layoutParams = LinearLayout.LayoutParams(dp(16), dp(16)).apply {
+                    marginStart = dp(-22)
+                    topMargin = dp(3)
+                }
+                background = roundedBg(palette.primaryContainer, 999)
+            })
+        }
     }
 
     /** The top pill: ID-mode prompts, otherwise the "looking for document" hint. */
@@ -302,6 +533,7 @@ class ScannerActivity : Activity() {
         getSharedPreferences("drivescan_prefs", MODE_PRIVATE)
             .edit().putBoolean("auto_capture", autoCapture).apply()
         autoButton.text = if (autoCapture) tr(Str.BTN_AUTO_ON) else tr(Str.BTN_AUTO_OFF)
+        styleAutoButton()
         if (!autoCapture) {
             stableSinceMs = 0L
             lastQuad = null
@@ -641,11 +873,13 @@ class ScannerActivity : Activity() {
         }
     }
 
-    private fun toggleMode() {
-        idCardMode = !idCardMode
-        modeButton.text = if (idCardMode) tr(Str.BTN_ID_MODE) else tr(Str.BTN_DOC_MODE)
-        guideView.idCardMode = idCardMode
+    /** Segmented mode switch (v1.3.0): Document ↔ ID Card. */
+    private fun setIdMode(on: Boolean) {
+        idCardMode = on
+        guideView.idCardMode = on
         guideView.invalidate()
+        refreshModeSegments()
+        refreshStepChips()
         updateCount()
     }
 
@@ -768,6 +1002,22 @@ class ScannerActivity : Activity() {
                 val pts = (0 until 4).map { i ->
                     (quad[i * 2] * width) to (quad[i * 2 + 1] * height)
                 }
+                // v1.3.0: translucent accent wash inside the detected quad
+                // (the mockups' "document glow") under the frame lines.
+                val quadPath = android.graphics.Path().apply {
+                    moveTo(pts[0].first, pts[0].second)
+                    lineTo(pts[1].first, pts[1].second)
+                    lineTo(pts[2].first, pts[2].second)
+                    lineTo(pts[3].first, pts[3].second)
+                    close()
+                }
+                val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    style = Paint.Style.FILL
+                    color = Color.argb(
+                        36, Color.red(accentColor), Color.green(accentColor), Color.blue(accentColor)
+                    )
+                }
+                canvas.drawPath(quadPath, fillPaint)
                 for (i in 0 until 4) {
                     val a = pts[i]
                     val b = pts[(i + 1) % 4]

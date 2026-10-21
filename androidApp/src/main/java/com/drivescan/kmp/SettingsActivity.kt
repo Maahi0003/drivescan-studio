@@ -24,6 +24,7 @@ import com.drivescan.kmp.drive.SyncManager
 import com.drivescan.kmp.ui.AppLang
 import com.drivescan.kmp.ui.Lang
 import com.drivescan.kmp.ui.Str
+import com.drivescan.kmp.ui.applyBackdrop
 import com.drivescan.kmp.ui.bodyText
 import com.drivescan.kmp.ui.bottomNav
 import com.drivescan.kmp.ui.card
@@ -35,6 +36,7 @@ import com.drivescan.kmp.ui.primaryButton
 import com.drivescan.kmp.ui.rounded
 import com.drivescan.kmp.ui.sectionTitle
 import com.drivescan.kmp.ui.smallText
+import com.drivescan.kmp.ui.styleGlassDialog
 import com.drivescan.kmp.ui.titleText
 import com.drivescan.kmp.ui.tr
 import com.drivescan.kmp.ui.trf
@@ -57,7 +59,7 @@ class SettingsActivity : Activity() {
         Lang.init(this)
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(palette.bg)
+            applyBackdrop(palette)
         }
         val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -260,7 +262,7 @@ class SettingsActivity : Activity() {
         // ---- About ----------------------------------------------------------------
         content.addView(sectionTitle(tr(Str.SECTION_ABOUT), palette))
         val about = card(palette)
-        about.addView(bodyText(trf(Str.ABOUT_VERSION, "1.2.0"), palette, 15f))
+        about.addView(bodyText(trf(Str.ABOUT_VERSION, "1.3.0"), palette, 15f))
         about.addView(
             smallText(
                 tr(Str.ABOUT_TEXT),
@@ -344,12 +346,14 @@ class SettingsActivity : Activity() {
     }
 
     private fun showUpdateDialog(versionName: String, notes: String, apkUrl: String) {
-        AlertDialog.Builder(this)
+        val dialog = AlertDialog.Builder(this)
             .setTitle(tr(Str.UPDATE_AVAILABLE_TITLE))
             .setMessage(trf(Str.UPDATE_AVAILABLE_MSG, versionName, notes))
             .setPositiveButton(tr(Str.BTN_DOWNLOAD_INSTALL)) { _, _ -> downloadUpdate(apkUrl) }
             .setNegativeButton(tr(Str.BTN_LATER), null)
-            .show()
+            .create()
+        styleGlassDialog(dialog, palette)
+        dialog.show()
     }
 
     private fun downloadUpdate(apkUrl: String) {

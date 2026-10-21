@@ -26,8 +26,13 @@ import com.drivescan.kmp.scan.ImageOps
 import com.drivescan.kmp.scan.PdfEncrypt
 import com.drivescan.kmp.ui.Lang
 import com.drivescan.kmp.ui.Str
+import com.drivescan.kmp.ui.applyBackdrop
+import com.drivescan.kmp.ui.glassBg
+import com.drivescan.kmp.ui.glassSubtleBg
 import com.drivescan.kmp.ui.inputField
 import com.drivescan.kmp.ui.palette
+import com.drivescan.kmp.ui.rounded
+import com.drivescan.kmp.ui.styleGlassDialog
 import com.drivescan.kmp.ui.tr
 import com.drivescan.kmp.ui.trf
 import java.io.File
@@ -71,14 +76,19 @@ class DocViewerActivity : Activity() {
     private fun dp(v: Int): Int = (v * resources.displayMetrics.density).toInt()
 
     private fun buildUi(): View {
+        // v1.3.0: theme backdrop, floating glass top bar + control bar.
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(palette.bg)
+            applyBackdrop(palette)
         }
         val top = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(14), dp(10), dp(14), dp(10))
+            background = glassBg(palette, floating = true)
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { setMargins(dp(12), dp(10), dp(12), dp(4)) }
         }
         val back = Button(this).apply {
             text = "←"
@@ -117,24 +127,33 @@ class DocViewerActivity : Activity() {
         stage.addView(messageView, FrameLayout.LayoutParams(-1, -1))
         root.addView(stage, LinearLayout.LayoutParams(-1, 0, 1f))
 
+        // Floating glass control bar: nav + actions + page management.
+        val controlBar = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = glassBg(palette, floating = true)
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { setMargins(dp(12), dp(4), dp(12), dp(12)) }
+        }
+
         val nav = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
-            setPadding(dp(10), dp(6), dp(10), dp(2))
+            setPadding(dp(10), dp(8), dp(10), dp(2))
         }
         nav.addView(darkButton(tr(Str.BTN_PREV)) { step(-1) })
         nav.addView(darkButton(tr(Str.BTN_NEXT)) { step(1) })
-        root.addView(nav)
+        controlBar.addView(nav)
 
         val actions = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
-            setPadding(dp(10), dp(2), dp(10), dp(14))
+            setPadding(dp(10), dp(2), dp(10), dp(10))
         }
         actions.addView(darkButton(tr(Str.BTN_SHARE)) { shareCurrent() })
         val current = doc
         if (current != null && current.pageFiles.isNotEmpty()) {
-            actions.addView(darkButton(tr(Str.BTN_SHARE_PASSWORD)) { shareWithPassword() })
+            actions.addView(darkButton(tr(Str.BTN_SHARE_PASSWORD), accent = true) { shareWithPassword() })
         }
         if (current?.pdfFile != null) {
             actions.addView(darkButton(tr(Str.BTN_OPEN_PDF)) { openPdf() })
@@ -150,20 +169,21 @@ class DocViewerActivity : Activity() {
                 finish()
             })
         }
-        root.addView(actions)
+        controlBar.addView(actions)
 
         // Page management for multi-page documents (reorder / delete a page).
         if (current != null && current.pageFiles.size > 1 && !current.inBin) {
             val manage = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER
-                setPadding(dp(10), dp(0), dp(10), dp(12))
+                setPadding(dp(10), dp(0), dp(10), dp(10))
             }
             manage.addView(darkButton(tr(Str.BTN_MOVE_PAGE_LEFT)) { moveCurrentPage(-1) })
             manage.addView(darkButton(tr(Str.BTN_MOVE_PAGE_RIGHT)) { moveCurrentPage(1) })
             manage.addView(darkButton(tr(Str.BTN_DELETE_PAGE_VIEWER)) { deleteCurrentPage() })
-            root.addView(manage)
+            controlBar.addView(manage)
         }
+        root.addView(controlBar)
 
         val detector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
             override fun onFling(
@@ -183,19 +203,25 @@ class DocViewerActivity : Activity() {
         return root
     }
 
-    private fun darkButton(label: String, onClick: () -> Unit): Button =
+    private fun darkButton(label: String, accent: Boolean = false, onClick: () -> Unit): Button =
         Button(this).apply {
             text = label
             textSize = 13.5f
             isAllCaps = false
-            setTextColor(palette.text)
-            val d = android.graphics.drawable.GradientDrawable().apply {
-                shape = android.graphics.drawable.GradientDrawable.RECTANGLE
-                cornerRadius = dp(palette.radius).toFloat()
-                setColor(palette.card)
-                setStroke(dp(1), palette.cardBorder)
+            if (accent) {
+                // v1.3.0 (viewer_password_share mockup): the password-share
+                // entry is the accent action of the viewer.
+                if (palette.dark) {
+                    background = rounded(Color.argb(51, 0, 229, 163), 12)
+                    setTextColor(palette.primary)
+                } else {
+                    background = rounded(palette.primaryContainer, 12)
+                    setTextColor(palette.onPrimaryContainer)
+                }
+            } else {
+                setTextColor(palette.text)
+                background = glassSubtleBg(palette, 12)
             }
-            background = d
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT
             ).apply { marginEnd = dp(8) }
@@ -277,7 +303,7 @@ class DocViewerActivity : Activity() {
         val input = inputField(tr(Str.SHARE_PW_HINT), palette()).apply {
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
         }
-        AlertDialog.Builder(this)
+        val dialog = AlertDialog.Builder(this)
             .setTitle(tr(Str.SHARE_PW_TITLE))
             .setView(input)
             .setPositiveButton(tr(Str.BTN_SHARE)) { _, _ ->
@@ -289,7 +315,9 @@ class DocViewerActivity : Activity() {
                 }
             }
             .setNegativeButton(tr(Str.BTN_CANCEL), null)
-            .show()
+            .create()
+        styleGlassDialog(dialog, palette)
+        dialog.show()
     }
 
     private fun prepareAndShareProtected(d: ScanDocument, password: String) {
