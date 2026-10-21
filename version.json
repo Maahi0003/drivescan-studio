@@ -1,6 +1,1 @@
-{
-  "versionCode": 6,
-  "versionName": "1.0.4",
-  "apkUrl": "https://github.com/Maahi0003/drivescan-studio/releases/download/v1.0.4/drivescan-studio.apk",
-  "notes": "Token exchange fixed: app now sends the client_secret Google requires for Desktop clients."
-}
+{"apkUrl":"https://github.com/Maahi0003/drivescan-studio/releases/download/v1.1.0/drivescan-studio.apk","notes":"Big update: smart auto-sync with Sync now button, + button to upload files, themed scanner, ID-card mode (front+back on one page), on-device OCR in English + Hindi (searchable scans), auto document detection + auto-capture, page reorder/delete + combine documents into one PDF, password-protected PDF sharing, and a signature stamp tool.","versionCode":7,"versionName":"1.1.0"}
