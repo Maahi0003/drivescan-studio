@@ -146,14 +146,15 @@ class ScannerActivity : Activity() {
 
     // ---- UI -----------------------------------------------------------------
 
-    /** Themed chrome colors: dark set in dark mode, light set in light mode. */
-    private val chromeText: Int get() = if (palette.dark) Color.WHITE else palette.text
+    /** Themed chrome colors, derived from the active palette (v1.2.0):
+     *  Midnight charcoal surfaces in dark mode, Gulmohar warm surfaces in light. */
+    private val chromeText: Int get() = palette.text
     private val chromePillBg: Int
-        get() = if (palette.dark) Color.argb(170, 30, 30, 40) else Color.argb(190, 255, 255, 255)
+        get() = if (palette.dark) Color.argb(170, 21, 26, 33) else Color.argb(190, 255, 255, 255)
     private val chromeBarBg: Int
-        get() = if (palette.dark) Color.argb(190, 12, 12, 18) else Color.argb(215, 248, 249, 252)
+        get() = if (palette.dark) Color.argb(190, 12, 15, 20) else Color.argb(215, 255, 247, 236)
     private val chromeBtnBg: Int
-        get() = if (palette.dark) Color.argb(140, 50, 52, 66) else Color.argb(160, 222, 230, 244)
+        get() = if (palette.dark) Color.argb(160, 27, 34, 44) else Color.argb(170, 255, 233, 219)
 
     private fun buildUi(): View {
         val root = FrameLayout(this).apply {
@@ -173,6 +174,7 @@ class ScannerActivity : Activity() {
         root.addView(textureView, FrameLayout.LayoutParams(-1, -1))
 
         guideView = GuideView(this)
+        guideView.accentColor = palette.primary
         root.addView(guideView, FrameLayout.LayoutParams(-1, -1))
 
         val topBar = LinearLayout(this).apply {
@@ -231,17 +233,17 @@ class ScannerActivity : Activity() {
         val captureBtn = Button(this).apply {
             text = "◉"
             textSize = 30f
-            setTextColor(Color.WHITE)
-            background = roundedBg(Color.rgb(21, 101, 192), 40)
+            setTextColor(palette.onPrimary)
+            background = roundedBg(palette.primary, 40)
             layoutParams = LinearLayout.LayoutParams(dp(72), dp(72))
             setOnClickListener { capturePhoto(null) }
         }
         captureRow.addView(captureBtn)
         val doneBtn = Button(this).apply {
             text = tr(Str.BTN_DONE)
-            setTextColor(Color.WHITE)
+            setTextColor(palette.onSuccess)
             isAllCaps = false
-            background = roundedBg(Color.rgb(46, 125, 50), 16)
+            background = roundedBg(palette.success, palette.radius)
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
                 .apply { marginStart = dp(14) }
             setOnClickListener { goToEditor() }
@@ -268,7 +270,7 @@ class ScannerActivity : Activity() {
             textSize = 13f
             isAllCaps = false
             setTextColor(chromeText)
-            background = roundedBg(chromeBtnBg, 14)
+            background = roundedBg(chromeBtnBg, palette.radius)
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT
             ).apply { marginEnd = dp(8) }
@@ -717,7 +719,8 @@ class ScannerActivity : Activity() {
     private fun toast(msg: String) = Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
 
     /** Guide overlay: a stroked rounded rectangle (full doc, or card ratio in ID mode),
-     *  plus the live detected document quad (green) when auto-capture sees one. */
+     *  plus the live detected document quad when auto-capture sees one.
+     *  Frame and quad are drawn in the theme accent (lime in Midnight, coral in Gulmohar). */
     class GuideView(context: Context) : View(context) {
         var idCardMode: Boolean = false
         var detectedQuad: FloatArray? = null
@@ -735,6 +738,18 @@ class ScannerActivity : Activity() {
             color = Color.rgb(76, 220, 120)
             style = Paint.Style.FILL
         }
+
+        /** Theme accent for the guide frame (soft) and the detected quad (solid). */
+        var accentColor: Int = Color.rgb(76, 220, 120)
+            set(value) {
+                field = value
+                paint.color = Color.argb(
+                    230, Color.red(value), Color.green(value), Color.blue(value)
+                )
+                quadPaint.color = value
+                quadDot.color = value
+                invalidate()
+            }
 
         override fun onDraw(canvas: android.graphics.Canvas) {
             super.onDraw(canvas)

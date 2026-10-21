@@ -120,7 +120,7 @@ class EditorActivity : Activity() {
     private fun buildUi(): View {
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.rgb(16, 16, 22))
+            setBackgroundColor(palette.bg)
         }
         val top = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -129,12 +129,12 @@ class EditorActivity : Activity() {
         }
         top.addView(TextView(this).apply {
             text = tr(Str.EDITOR_TITLE)
-            setTextColor(Color.WHITE)
+            setTextColor(palette.text)
             textSize = 17f
         })
         top.addView(View(this), LinearLayout.LayoutParams(0, 1, 1f))
         pageLabel = TextView(this).apply {
-            setTextColor(Color.rgb(180, 185, 200))
+            setTextColor(palette.textSecondary)
             textSize = 13f
         }
         top.addView(pageLabel)
@@ -212,8 +212,8 @@ class EditorActivity : Activity() {
             text = label
             textSize = 13f
             isAllCaps = false
-            setTextColor(Color.WHITE)
-            background = rounded(Color.rgb(44, 46, 60), 12)
+            setTextColor(palette.text)
+            background = rounded(palette.card, palette.radius, palette.cardBorder)
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT
             ).apply { marginEnd = dp(8) }
@@ -257,7 +257,7 @@ class EditorActivity : Activity() {
                 layoutParams = LinearLayout.LayoutParams(dp(46), dp(58)).apply { marginEnd = dp(8) }
                 scaleType = ImageView.ScaleType.CENTER_CROP
                 background = rounded(
-                    if (idx == current) palette.primary else Color.rgb(50, 52, 66), 8
+                    if (idx == current) palette.primary else palette.chipBg, palette.radiusSmall
                 )
                 setPadding(3, 3, 3, 3)
                 ImageOps.loadBitmap(File(path), 200)?.let { setImageBitmap(it) }
@@ -349,7 +349,8 @@ class EditorActivity : Activity() {
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, dp(280)
             )
-            background = rounded(Color.WHITE, 12, palette.cardBorder)
+            // The pad stays paper-white in both themes: it is the signing surface.
+            background = rounded(Color.WHITE, palette.radiusSmall, palette.cardBorder)
         }
         container.addView(pad)
         AlertDialog.Builder(this)
@@ -613,7 +614,7 @@ class EditorActivity : Activity() {
 
     /**
      * Overlay that draws the page bitmap's fitted rect plus 4 draggable
-     * corner handles (cyan circles on connecting lines).
+     * corner handles (theme-accent circles on connecting lines).
      */
     inner class CornerView(context: Context) : View(context) {
         private var bitmap: Bitmap? = null
@@ -621,12 +622,12 @@ class EditorActivity : Activity() {
         private var dragging = -1
 
         private val linePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.rgb(64, 196, 255)
+            color = palette.primary
             style = Paint.Style.STROKE
             strokeWidth = 4f
         }
         private val handlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.rgb(64, 196, 255)
+            color = palette.primary
             style = Paint.Style.FILL
         }
         private val handleCore = Paint(Paint.ANTI_ALIAS_FLAG).apply {

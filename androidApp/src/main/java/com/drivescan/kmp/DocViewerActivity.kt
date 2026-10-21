@@ -42,6 +42,7 @@ import kotlin.concurrent.thread
 class DocViewerActivity : Activity() {
 
     private val store by lazy { PersistentStore.get(this) }
+    private val palette by lazy { palette() }
     private var doc: ScanDocument? = null
     private var pageIndex = 0
 
@@ -72,7 +73,7 @@ class DocViewerActivity : Activity() {
     private fun buildUi(): View {
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.rgb(14, 14, 18))
+            setBackgroundColor(palette.bg)
         }
         val top = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -81,7 +82,7 @@ class DocViewerActivity : Activity() {
         }
         val back = Button(this).apply {
             text = "←"
-            setTextColor(Color.WHITE)
+            setTextColor(palette.text)
             background = null
             textSize = 20f
             setOnClickListener { finish() }
@@ -89,12 +90,12 @@ class DocViewerActivity : Activity() {
         top.addView(back)
         top.addView(TextView(this).apply {
             text = doc?.name ?: "Document"
-            setTextColor(Color.WHITE)
+            setTextColor(palette.text)
             textSize = 15.5f
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         })
         indicator = TextView(this).apply {
-            setTextColor(Color.rgb(170, 175, 190))
+            setTextColor(palette.textSecondary)
             textSize = 13f
         }
         top.addView(indicator)
@@ -107,7 +108,7 @@ class DocViewerActivity : Activity() {
         }
         stage.addView(imageView, FrameLayout.LayoutParams(-1, -1))
         messageView = TextView(this).apply {
-            setTextColor(Color.rgb(200, 205, 220))
+            setTextColor(palette.textSecondary)
             textSize = 14.5f
             gravity = Gravity.CENTER
             setPadding(dp(28), dp(20), dp(28), dp(20))
@@ -187,11 +188,12 @@ class DocViewerActivity : Activity() {
             text = label
             textSize = 13.5f
             isAllCaps = false
-            setTextColor(Color.WHITE)
+            setTextColor(palette.text)
             val d = android.graphics.drawable.GradientDrawable().apply {
                 shape = android.graphics.drawable.GradientDrawable.RECTANGLE
-                cornerRadius = dp(12).toFloat()
-                setColor(Color.rgb(44, 46, 60))
+                cornerRadius = dp(palette.radius).toFloat()
+                setColor(palette.card)
+                setStroke(dp(1), palette.cardBorder)
             }
             background = d
             layoutParams = LinearLayout.LayoutParams(

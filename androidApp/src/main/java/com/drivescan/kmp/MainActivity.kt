@@ -133,6 +133,8 @@ class MainActivity : Activity() {
         root.addView(header)
 
         searchInput = inputField(tr(Str.SEARCH_HINT), palette).apply {
+            // Gulmohar's search field is a full pill; Midnight keeps the sharp field.
+            if (!palette.dark) background = rounded(palette.card, 999, palette.cardBorder)
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
             ).apply { setMargins(dp(20), dp(8), dp(20), dp(4)) }
@@ -219,7 +221,7 @@ class MainActivity : Activity() {
             text = "+"
             textSize = 30f
             gravity = Gravity.CENTER
-            setTextColor(Color.WHITE)
+            setTextColor(palette.onPrimary)
             background = rounded(palette.primary, 30)
             layoutParams = FrameLayout.LayoutParams(dp(58), dp(58), Gravity.END or Gravity.BOTTOM)
                 .apply { setMargins(0, 0, dp(20), dp(150)) }
@@ -256,7 +258,7 @@ class MainActivity : Activity() {
                 }
             }
         }
-        driveChip.setTextColor(if (connected) Color.rgb(46, 125, 50) else palette.textSecondary)
+        driveChip.setTextColor(if (connected) palette.success else palette.textSecondary)
         driveChip.background = rounded(palette.chipBg, 20)
         syncNowButton.visibility = if (connected) View.VISIBLE else View.GONE
         refreshFolders()
@@ -279,13 +281,13 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun chip(label: String, selected: Boolean, onClick: () -> Unit): TextView =
+    private fun chip(label: String, selected: Boolean, tint: Int? = null, onClick: () -> Unit): TextView =
         TextView(this).apply {
             text = label
             textSize = 13.5f
             setPadding(dp(14), dp(8), dp(14), dp(8))
-            setTextColor(if (selected) Color.WHITE else palette.text)
-            background = rounded(if (selected) palette.primary else palette.chipBg, 20)
+            setTextColor(if (selected) palette.onPrimary else palette.text)
+            background = rounded(if (selected) palette.primary else tint ?: palette.chipBg, 20)
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT
             ).apply { marginEnd = dp(8) }
@@ -296,8 +298,10 @@ class MainActivity : Activity() {
         folderBar.removeAllViews()
         folderBar.addView(chip(tr(Str.CHIP_ALL), folderFilter == null) { folderFilter = null; refresh() })
         folderBar.addView(chip(tr(Str.CHIP_ROOT), folderFilter == ROOT) { folderFilter = ROOT; refresh() })
-        for (folder in store.folders()) {
-            folderBar.addView(chip("📁 ${folder.name}", folderFilter == folder.id) {
+        for ((index, folder) in store.folders().withIndex()) {
+            // Gulmohar gives every folder its own pastel tint (coral/teal/marigold cycle).
+            val tint = palette.folderTints[index % palette.folderTints.size]
+            folderBar.addView(chip("📁 ${folder.name}", folderFilter == folder.id, tint) {
                 folderFilter = folder.id
                 refresh()
             })
@@ -517,7 +521,7 @@ class MainActivity : Activity() {
             val row = LinearLayout(this@MainActivity).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
-                background = rounded(palette.card, 14, palette.cardBorder)
+                background = rounded(palette.card, palette.radius, palette.cardBorder)
                 setPadding(dp(12), dp(10), dp(14), dp(10))
                 layoutParams = LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
@@ -526,7 +530,7 @@ class MainActivity : Activity() {
             val thumb = ImageView(this@MainActivity).apply {
                 layoutParams = LinearLayout.LayoutParams(dp(52), dp(64)).apply { marginEnd = dp(14) }
                 scaleType = ImageView.ScaleType.CENTER_CROP
-                background = rounded(palette.chipBg, 8)
+                background = rounded(palette.thumbBg, palette.radiusSmall)
             }
             val cached = thumbCache[doc.id]
             if (cached != null) {
@@ -545,7 +549,7 @@ class MainActivity : Activity() {
             }
             val selected = doc.id in selection
             if (selected) {
-                row.background = rounded(palette.chipBg, 14, palette.primary)
+                row.background = rounded(palette.chipBg, palette.radius, palette.primary)
             }
             texts.addView(bodyText(if (selected) "✓ ${doc.name}" else doc.name, palette, 15f))
             val meta = StringBuilder()

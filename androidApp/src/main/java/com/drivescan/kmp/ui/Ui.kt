@@ -12,19 +12,46 @@ import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.TextView
 
-/** Two palettes — light, and a dark palette applied when the user enables dark mode. */
+/**
+ * Two palettes, one per appearance mode (v1.2.0 reskin):
+ *  - DARK  = "Midnight Console": charcoal surfaces, one signal-lime accent,
+ *    hairline borders, sharp 9dp corners, monospace meta text.
+ *  - LIGHT = "Gulmohar": warm off-white, coral primary with teal/marigold
+ *    reserved for folder tints, big 20dp corners.
+ * Hex values are taken exactly from the approved design samples.
+ */
 class Palette(val dark: Boolean) {
-    val bg: Int = if (dark) Color.rgb(16, 17, 23) else Color.rgb(247, 248, 250)
-    val card: Int = if (dark) Color.rgb(30, 31, 40) else Color.WHITE
-    val cardBorder: Int = if (dark) Color.rgb(52, 54, 68) else Color.rgb(226, 229, 235)
-    val text: Int = if (dark) Color.rgb(238, 239, 244) else Color.rgb(24, 26, 34)
-    val textSecondary: Int = if (dark) Color.rgb(164, 167, 182) else Color.rgb(104, 110, 124)
-    val primary: Int = Color.rgb(21, 101, 192)
-    val primaryDark: Int = Color.rgb(13, 66, 130)
-    val onPrimary: Int = Color.WHITE
-    val chipBg: Int = if (dark) Color.rgb(38, 40, 52) else Color.rgb(232, 238, 247)
+    val bg: Int = if (dark) Color.rgb(12, 15, 20) else Color.rgb(255, 247, 236) // #0C0F14 / #FFF7EC
+    val card: Int = if (dark) Color.rgb(21, 26, 33) else Color.WHITE // #151A21 / #FFFFFF
+    val cardBorder: Int = if (dark) Color.rgb(36, 44, 56) else Color.rgb(241, 226, 206) // #242C38 / #F1E2CE
+    val text: Int = if (dark) Color.rgb(233, 237, 243) else Color.rgb(34, 48, 60) // #E9EDF3 / #22303C
+    val textSecondary: Int = if (dark) Color.rgb(139, 150, 165) else Color.rgb(124, 136, 148) // #8B96A5 / #7C8894
+    val primary: Int = if (dark) Color.rgb(163, 230, 53) else Color.rgb(255, 107, 74) // #A3E635 lime / #FF6B4A coral
+    val primaryDark: Int = if (dark) Color.rgb(132, 204, 22) else Color.rgb(224, 82, 46) // pressed shade (derived)
+    val onPrimary: Int = if (dark) Color.rgb(19, 24, 3) else Color.WHITE // #131803 / #FFFFFF
+    val chipBg: Int = if (dark) Color.rgb(27, 34, 44) else Color.rgb(255, 233, 219) // #1B222C / #FFE9DB
+    val thumbBg: Int = if (dark) Color.rgb(30, 38, 49) else Color.rgb(255, 227, 210) // #1E2631 / #FFE3D2
+    /** "Go / connected" signal: lime in Midnight, teal in Gulmohar. */
+    val success: Int = if (dark) Color.rgb(163, 230, 53) else Color.rgb(14, 149, 148) // #A3E635 / #0E9594
+    val onSuccess: Int = if (dark) Color.rgb(19, 24, 3) else Color.WHITE
     val danger: Int = Color.rgb(198, 40, 40)
-    val scannerBg: Int = Color.rgb(10, 10, 14)
+    val scannerBg: Int = if (dark) Color.rgb(12, 15, 20) else Color.rgb(10, 10, 14)
+
+    /** Corner radius (dp) for cards, buttons and rows: sharp 9 in Midnight, round 20 in Gulmohar. */
+    val radius: Int = if (dark) 9 else 20
+
+    /** Corner radius (dp) for small inner elements (thumbnails, selected rows). */
+    val radiusSmall: Int = if (dark) 7 else 14
+
+    /**
+     * Pastel fills cycled across dashboard folder chips (Gulmohar: coral /
+     * teal / marigold tints). Midnight folders stay on the plain chip tone.
+     */
+    val folderTints: List<Int> = if (dark) listOf(chipBg, chipBg, chipBg) else listOf(
+        Color.rgb(255, 225, 214), // #FFE1D6 coral tint
+        Color.rgb(216, 239, 234), // #D8EFEA teal tint
+        Color.rgb(252, 235, 200) // #FCEBC8 marigold tint
+    )
 }
 
 fun Context.palette(): Palette {
@@ -65,18 +92,23 @@ fun Context.smallText(text: String, palette: Palette, size: Float = 12.5f): Text
         this.text = text
         textSize = size
         setTextColor(palette.textSecondary)
+        // Midnight Console sets meta text (counts, dates, sizes) in mono —
+        // approximated with the system monospace face (IBM Plex Mono stand-in).
+        if (palette.dark) typeface = Typeface.MONOSPACE
     }
 
-fun Context.primaryButton(text: String): Button =
-    Button(this).apply {
+fun Context.primaryButton(text: String): Button {
+    val palette = palette()
+    return Button(this).apply {
         this.text = text
         textSize = 15f
-        setTextColor(Color.WHITE)
+        setTextColor(palette.onPrimary)
         typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
         isAllCaps = false
-        background = rounded(Color.rgb(21, 101, 192), 12)
+        background = rounded(palette.primary, palette.radius)
         setPadding(28, 14, 28, 14)
     }
+}
 
 fun Context.ghostButton(text: String, palette: Palette): Button =
     Button(this).apply {
@@ -84,7 +116,7 @@ fun Context.ghostButton(text: String, palette: Palette): Button =
         textSize = 14f
         setTextColor(palette.primary)
         isAllCaps = false
-        background = rounded(palette.chipBg, 12)
+        background = rounded(palette.chipBg, palette.radius)
         setPadding(22, 12, 22, 12)
     }
 
@@ -94,7 +126,7 @@ fun Context.inputField(hint: String, palette: Palette): EditText =
         textSize = 15f
         setTextColor(palette.text)
         setHintTextColor(palette.textSecondary)
-        background = rounded(palette.card, 10, palette.cardBorder)
+        background = rounded(palette.card, palette.radius, palette.cardBorder)
         setPadding(24, 16, 24, 16)
     }
 
@@ -102,7 +134,10 @@ fun Context.inputField(hint: String, palette: Palette): EditText =
 fun Context.card(palette: Palette): LinearLayout =
     LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL
-        background = rounded(palette.card, 14, palette.cardBorder)
+        // Gulmohar cards are borderless with a soft warm shadow (approximated
+        // with elevation); Midnight cards keep the hairline border, no shadow.
+        background = rounded(palette.card, palette.radius, if (palette.dark) palette.cardBorder else null)
+        if (!palette.dark) elevation = 2.5f * resources.displayMetrics.density
         setPadding(28, 24, 28, 24)
         layoutParams = LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT

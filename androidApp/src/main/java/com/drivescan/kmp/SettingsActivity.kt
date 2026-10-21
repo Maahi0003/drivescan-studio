@@ -3,6 +3,8 @@ package com.drivescan.kmp
 import android.app.Activity
 import android.app.AlertDialog
 import android.content.Intent
+import android.content.res.ColorStateList
+import android.graphics.Color
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -72,6 +74,7 @@ class SettingsActivity : Activity() {
         })
         val darkSwitch = Switch(this).apply {
             isChecked = palette.dark
+            styleSwitch(this)
             setOnCheckedChangeListener { _, checked ->
                 getSharedPreferences("drivescan_prefs", MODE_PRIVATE)
                     .edit().putBoolean("dark_mode", checked).apply()
@@ -91,7 +94,7 @@ class SettingsActivity : Activity() {
             val row = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 setPadding(dp(10), dp(12), dp(10), dp(12))
-                if (selected) background = rounded(palette.chipBg, 10)
+                if (selected) background = rounded(palette.chipBg, palette.radiusSmall)
                 isClickable = true
                 setOnClickListener {
                     if (!selected) {
@@ -148,6 +151,7 @@ class SettingsActivity : Activity() {
         })
         val autoSyncSwitch = Switch(this).apply {
             isChecked = SyncManager.autoSyncEnabled(this@SettingsActivity)
+            styleSwitch(this)
             setOnCheckedChangeListener { _, checked ->
                 SyncManager.setAutoSync(this@SettingsActivity, checked)
             }
@@ -256,7 +260,7 @@ class SettingsActivity : Activity() {
         // ---- About ----------------------------------------------------------------
         content.addView(sectionTitle(tr(Str.SECTION_ABOUT), palette))
         val about = card(palette)
-        about.addView(bodyText(trf(Str.ABOUT_VERSION, "1.1.0"), palette, 15f))
+        about.addView(bodyText(trf(Str.ABOUT_VERSION, "1.2.0"), palette, 15f))
         about.addView(
             smallText(
                 tr(Str.ABOUT_TEXT),
@@ -283,6 +287,24 @@ class SettingsActivity : Activity() {
     }
 
     private fun toast(msg: String) = Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
+
+    /** Tints a framework Switch with the theme accent (v1.2.0 reskin). */
+    private fun styleSwitch(s: Switch) {
+        val checked = intArrayOf(android.R.attr.state_checked)
+        val unchecked = intArrayOf()
+        s.thumbTintList = ColorStateList(
+            arrayOf(checked, unchecked),
+            intArrayOf(palette.primary, if (palette.dark) palette.textSecondary else Color.WHITE)
+        )
+        val p = palette.primary
+        s.trackTintList = ColorStateList(
+            arrayOf(checked, unchecked),
+            intArrayOf(
+                Color.argb(110, Color.red(p), Color.green(p), Color.blue(p)),
+                palette.chipBg
+            )
+        )
+    }
 
     // ---- App update flow -------------------------------------------------------
     //
